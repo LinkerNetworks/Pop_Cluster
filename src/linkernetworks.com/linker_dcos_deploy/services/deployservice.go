@@ -87,7 +87,7 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 
 	//copy the config file to target dns server
 	for _, server := range dnsServers {
-		_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/config", storagePath)
+		_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/config && sudo chown -R ubuntu:ubuntu /linker", storagePath)
 		if err != nil {
 			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
 			logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
@@ -121,7 +121,7 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	if request.IsLinkerMgmt {
 		//copy the key for mongo db
 		for _, server := range mgmtServers {
-			_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/key", storagePath)
+			_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/key && sudo chown -R ubuntu:ubuntu /linker", storagePath)
 			if err != nil {
 				errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
 				logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
@@ -360,7 +360,7 @@ func changeDnsConfig(mgmtServers []entity.Server) (err error) {
 func changeNameserver(servers, dnsServers []entity.Server, storagePath string, isLinkerMgmt bool) (err error) {
 	if isLinkerMgmt {
 		for _, server := range servers {
-			commandStr := fmt.Sprintf("sudo sed -i '1s/^/nameserver %s\n /' /etc/resolv.conf", server.IpAddress)
+			commandStr := fmt.Sprintf("sudo sed -i '1inameserver %s' /etc/resolv.conf", server.IpAddress)
 			_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
 			if err != nil {
 				logrus.Errorf("change name server failed for server [%v], error is %v", server.IpAddress, err)
@@ -368,7 +368,7 @@ func changeNameserver(servers, dnsServers []entity.Server, storagePath string, i
 			}
 		}
 	} else {
-		commandStr := fmt.Sprintf("sudo sed -i '1s/^/nameserver %s\n /' /etc/resolv.conf", dnsServers[0].IpAddress)
+		commandStr := fmt.Sprintf("sudo sed -i '1inameserver %s' /etc/resolv.conf", dnsServers[0].IpAddress)
 		for _, server := range servers {
 			_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
 			if err != nil {
