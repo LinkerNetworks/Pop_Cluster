@@ -3,10 +3,10 @@ package services
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"io/ioutil"
-	"errors"
 	"linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_dcos_deploy/command"
 	"sync"
@@ -63,7 +63,12 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 
 	//TODO prepare ".env" file for new Cluster, need to understand whether 'slave on master'
 	//call docker-compose to deploy the management clusters and slave clusters
-	err = dockerComposeCreateCluster(request.UserName, request.ClusterName, swarmServers, request.ClusterNumber-4)
+	clusterSlaveSize := request.ClusterNumber - 1
+	if request.IsLinkerMgmt == false {
+		clusterSlaveSize = request.ClusterNumber - 4
+	}
+
+	err = dockerComposeCreateCluster(request.UserName, request.ClusterName, swarmServers, clusterSlaveSize)
 
 	if err != nil {
 		logrus.Errorf("Call docker-compose to create cluster failed , err is %v", err)
@@ -82,6 +87,12 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 
 	//copy the config file to target dns server
 	for _, server := range dnsServers {
+		_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/config", storagePath)
+		if err != nil {
+			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
+			logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
+			return
+		}
 		_, _, err = command.ScpToMachine(server.Hostname, "/linker/config/config.json", "/linker/config/config.json", storagePath)
 		if err != nil {
 			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
@@ -110,9 +121,16 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	if request.IsLinkerMgmt {
 		//copy the key for mongo db
 		for _, server := range mgmtServers {
+			_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/key", storagePath)
+			if err != nil {
+				errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
+				logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
+				return
+			}
 			_, _, err = command.ScpToMachine(server.Hostname, "/linker/key/mongodb-keyfile", "/linker/key/mongodb-keyfile", storagePath)
 			if err != nil {
 				errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
+				logrus.Errorf("copy mongodb key file to target server %s fail, err is %v", server.Hostname, err)
 				return
 			}
 		}
@@ -224,8 +242,6 @@ func prepareMesosUI(mgmtServers []entity.Server, dnsServer entity.Server, isLink
 		logrus.Errorf("Marshal marathon-dashboard err is %v", err)
 		return
 	}
-	
-	
 
 	return payload
 }
@@ -248,7 +264,7 @@ func prepareDNSandLbJson(username, clustername string, dnsServer entity.Server, 
 			return
 		}
 		serviceGroup.Id = fmt.Sprintf("/%s-%s-dns", username, clustername)
-		
+
 		for _, group := range serviceGroup.Groups {
 			// Add constraints
 			// There is no case for group embeded group.
@@ -257,7 +273,7 @@ func prepareDNSandLbJson(username, clustername string, dnsServer entity.Server, 
 				app.Constraints = append(app.Constraints, constraint)
 			}
 		}
-		
+
 		payload, err = json.Marshal(*serviceGroup)
 		if err != nil {
 			logrus.Errorf("Marshal mesos dns and marathon lb err is %v", err)
