@@ -80,11 +80,11 @@ func (m *MarathonService) IsDeploymentDone(deploymentId, marathonEndpoint string
 	logrus.Debugf("start to check deployment %v status from  marathon %v", deploymentId, marathonEndpoint)
 	resp, err := httpclient.Http_get(url, "",
 		httpclient.Header{"Content-Type", "application/json"})
-	defer resp.Body.Close()
 	if err != nil {
 		logrus.Errorf("get deployments from marathon failed, error is %v", err)
 		return
 	}
+	defer resp.Body.Close()
 
 	// if response status is greater than 400, means marathon returns error
 	// else returned body, findout deploymentId, and return
