@@ -63,7 +63,7 @@ func (p *DockerMachineService) Create(username, clusername string, swarm, swarmM
 		logrus.Errorf("GetMachinePublicIPAddress failed , err is %v", err)
 		return
 	}
-	
+
 	privateIPAddress, err := command.GetMachinePrivateIPAddress(hostname, storagePath)
 	if err != nil {
 		logrus.Errorf("GetMachinePrivateIPAddress failed , err is %v", err)
@@ -75,20 +75,21 @@ func (p *DockerMachineService) Create(username, clusername string, swarm, swarmM
 	//	server.IpAddress = ipAddress
 	//	server.PrivateIpAddress = privateIPAddress
 
-	err = p.ReplaceKey(hostname, provider.Provider.SshUser, storagePath, server.IpAddress)
+	// here, change host first to let docker-machine connect machine first.
+	errorCode, err = p.ChangeHost(hostname, privateIPAddress, storagePath)
 	if err != nil {
-		logrus.Errorf("GetMachinePrivateIPAddress failed , err is %v", err)
+		logrus.Errorf("replace ssh key failed , err is %v", err)
 		return
 	}
-	
-	p.ChangeHost(hostname, privateIPAddress, storagePath)
-	errorCode = ""
+
+	err = p.ReplaceKey(hostname, provider.Provider.SshUser, storagePath, server.IpAddress)
+	// errorCode, err = p.ChangeHost(hostname, privateIPAddress, storagePath)
 
 	return
 }
 
 func (p *DockerMachineService) ReplaceKey(hostname, sshUser, storagePath, publicip string) (err error) {
-	commandStr := "ssh-agent bash && ssh-add " + storagePath + "/machines" + "/" + hostname + "/id_rsa"
+	commandStr := "eval `ssh-agent` && ssh-add " + storagePath + "/machines" + "/" + hostname + "/id_rsa"
 
 	logrus.Infof("Executing add key command: %s", commandStr)
 	_, _, err = command.ExecCommand(commandStr)
@@ -97,7 +98,7 @@ func (p *DockerMachineService) ReplaceKey(hostname, sshUser, storagePath, public
 		return
 	}
 
-	commandStr = "ssh-copy-id -i /linker/key/id_rsa.pub " + sshUser + "@" + publicip
+	commandStr = "/linker/copy-ssh-id.sh " + sshUser + " " + publicip
 	logrus.Infof("Executing copy key command: %s", commandStr)
 	_, _, err = command.ExecCommand(commandStr)
 	if err != nil {

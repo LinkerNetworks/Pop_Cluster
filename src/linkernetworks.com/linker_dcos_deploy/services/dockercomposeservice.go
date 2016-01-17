@@ -1,9 +1,10 @@
 package services
+
 import (
-	"sync"
 	"github.com/Sirupsen/logrus"
 	"linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_dcos_deploy/command"
+	"sync"
 )
 
 type DockerComposeService struct {
@@ -12,9 +13,8 @@ type DockerComposeService struct {
 
 var (
 	dockerComposeService *DockerComposeService = nil
-	onceDockerCompose sync.Once
+	onceDockerCompose    sync.Once
 )
-
 
 func GetDockerComposeService() *DockerComposeService {
 	onceDockerCompose.Do(func() {
@@ -25,13 +25,14 @@ func GetDockerComposeService() *DockerComposeService {
 
 }
 
-func (p *DockerComposeService) Create(username, clusterName string, allServers []entity.Server, scale int) error{
+func (p *DockerComposeService) Create(username, clusterName string, allServers []entity.Server, scale int) error {
 	nodeList := []string{}
 	masterList := []string{}
 	swarmMaster := ""
-	for _,tmpHost := range allServers  {
+	storagePath := DOCKERMACHINE_STORAGEPATH_PREFIX + username + "/" + clusterName + ""
+	for _, tmpHost := range allServers {
 		if tmpHost.IsSwarmMaster {
-			swarmMaster=tmpHost.Hostname
+			swarmMaster = tmpHost.Hostname
 		}
 		if tmpHost.IsMaster {
 			masterList = append(masterList, tmpHost.PrivateIpAddress)
@@ -40,6 +41,6 @@ func (p *DockerComposeService) Create(username, clusterName string, allServers [
 			tmpStr := tmpHost.Hostname + "=" + tmpHost.IpAddress
 			nodeList = append(nodeList, tmpStr)
 		}
- 	}
-	return command.InstallCluster(username, clusterName, swarmMaster, masterList, nodeList, scale)
+	}
+	return command.InstallCluster(username, clusterName, swarmMaster, storagePath, masterList, nodeList, scale)
 }

@@ -2,8 +2,8 @@ package command
 
 import (
 	"bytes"
-	"github.com/Sirupsen/logrus"
 	"errors"
+	"github.com/Sirupsen/logrus"
 
 	"linkernetworks.com/linker_common_lib/entity"
 )
@@ -14,46 +14,45 @@ const (
 )
 
 func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaster bool, consulHost string, provider entity.ProviderInfo, labels []entity.Label) (output string, errput string, err error) {
-	logrus.Infof("Prepare command to create docker machine: \n")	
+	logrus.Infof("Prepare command to create docker machine: \n")
 
 	var commandTextBuffer bytes.Buffer
 	commandTextBuffer.WriteString("docker-machine ")
 	commandTextBuffer.WriteString("--storage-path " + storagePath + " ")
 	commandTextBuffer.WriteString("create ")
-	
+
 	switch provider.Provider.ProviderType {
-		case PROVIDER_TYPE_OPENSTACK:
-			logrus.Infof("Openstack... \n")
-			openstack := provider.OpenstackInfo
-			commandTextBuffer.WriteString("--driver " + PROVIDER_TYPE_OPENSTACK + " ")
-			commandTextBuffer.WriteString("--openstack-auth-url " + openstack.AuthUrl + " ")
-			commandTextBuffer.WriteString("--openstack-username " + openstack.Username + " ")
-			commandTextBuffer.WriteString("--openstack-password " + openstack.Password + " ")
-			commandTextBuffer.WriteString("--openstack-tenant-name " + openstack.TenantName + " ")
-			commandTextBuffer.WriteString("--openstack-flavor-name " + openstack.FlavorName + " ")
-			commandTextBuffer.WriteString("--openstack-image-name " + openstack.ImageName + " ")
-			commandTextBuffer.WriteString("--openstack-ssh-user " + provider.Provider.SshUser + " ")
-			commandTextBuffer.WriteString("--openstack-sec-groups " + openstack.SecurityGroup + " ")
-			commandTextBuffer.WriteString("--openstack-floatingip-pool " + openstack.IpPoolName + " ")
-			commandTextBuffer.WriteString("--openstack-nova-network " + openstack.NovaNetwork + " ")
-	
-			
-		case PROVIDER_TYPE_AWSEC2:
-			logrus.Infof("Aws... \n")
-			awsec2 := provider.AwsEC2Info
-			commandTextBuffer.WriteString("--driver " + PROVIDER_TYPE_AWSEC2 + " ")
-			commandTextBuffer.WriteString("--amazonec2-access-key " + awsec2.AccessKey + " ")
-			commandTextBuffer.WriteString("--amazonec2-secret-key " + awsec2.SecretKey + " ")
-			commandTextBuffer.WriteString("--amazonec2-region " + awsec2.Region + " ")
-			commandTextBuffer.WriteString("--amazonec2-vpc-id " + awsec2.VpcId + " ")
-			commandTextBuffer.WriteString("--amazonec2-instance-type " + awsec2.InstanceType + " ")
-//			commandTextBuffer.WriteString("--amazonec2-instance-type " + awsec2.InstanceType + " ")
-			
-		default :
-			err = errors.New("Unsupport provider type!")
-			logrus.Errorf("Unsupport provider type: %v", err)
-			return
-		}
+	case PROVIDER_TYPE_OPENSTACK:
+		logrus.Infof("Openstack... \n")
+		openstack := provider.OpenstackInfo
+		commandTextBuffer.WriteString("--driver " + PROVIDER_TYPE_OPENSTACK + " ")
+		commandTextBuffer.WriteString("--openstack-auth-url " + openstack.AuthUrl + " ")
+		commandTextBuffer.WriteString("--openstack-username " + openstack.Username + " ")
+		commandTextBuffer.WriteString("--openstack-password " + openstack.Password + " ")
+		commandTextBuffer.WriteString("--openstack-tenant-name " + openstack.TenantName + " ")
+		commandTextBuffer.WriteString("--openstack-flavor-name " + openstack.FlavorName + " ")
+		commandTextBuffer.WriteString("--openstack-image-name " + openstack.ImageName + " ")
+		commandTextBuffer.WriteString("--openstack-ssh-user " + provider.Provider.SshUser + " ")
+		commandTextBuffer.WriteString("--openstack-sec-groups " + openstack.SecurityGroup + " ")
+		commandTextBuffer.WriteString("--openstack-floatingip-pool " + openstack.IpPoolName + " ")
+		commandTextBuffer.WriteString("--openstack-nova-network " + openstack.NovaNetwork + " ")
+
+	case PROVIDER_TYPE_AWSEC2:
+		logrus.Infof("Aws... \n")
+		awsec2 := provider.AwsEC2Info
+		commandTextBuffer.WriteString("--driver " + PROVIDER_TYPE_AWSEC2 + " ")
+		commandTextBuffer.WriteString("--amazonec2-access-key " + awsec2.AccessKey + " ")
+		commandTextBuffer.WriteString("--amazonec2-secret-key " + awsec2.SecretKey + " ")
+		commandTextBuffer.WriteString("--amazonec2-region " + awsec2.Region + " ")
+		commandTextBuffer.WriteString("--amazonec2-vpc-id " + awsec2.VpcId + " ")
+		commandTextBuffer.WriteString("--amazonec2-instance-type " + awsec2.InstanceType + " ")
+		//			commandTextBuffer.WriteString("--amazonec2-instance-type " + awsec2.InstanceType + " ")
+
+	default:
+		err = errors.New("Unsupport provider type!")
+		logrus.Errorf("Unsupport provider type: %v", err)
+		return
+	}
 
 	if swarm {
 		commandTextBuffer.WriteString("--swarm ")
@@ -64,7 +63,7 @@ func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaste
 	}
 
 	if swarm || swarmMaster {
-		commandTextBuffer.WriteString("--swarm-discovery consul://$(docker-machine --storage-path " + storagePath + " ip " + consulHost + "):8500")
+		commandTextBuffer.WriteString("--swarm-discovery consul://$(docker-machine --storage-path " + storagePath + " ip " + consulHost + "):8500 ")
 	}
 
 	for _, label := range labels {

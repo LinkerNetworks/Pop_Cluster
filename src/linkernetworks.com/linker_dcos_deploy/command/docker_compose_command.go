@@ -1,30 +1,33 @@
 package command
 
 import (
-	"github.com/Sirupsen/logrus"
-	"os"
-	"io"
 	"bytes"
+	"github.com/Sirupsen/logrus"
+	"io"
+	"os"
 	"strconv"
 )
-func clusterCompose(userName string, clusterName string, swarmName string,scale int) (output string, errput string, err error)  {
-	tmpOutPut, tmpErrPut, tmpErr := changeSwarm(userName, clusterName, swarmName, scale)
-	output = output +tmpOutPut + "\n"
+
+func clusterCompose(userName, clusterName, swarmName, storagePath string, scale int) (output, errput string, err error) {
+	tmpOutPut, tmpErrPut, tmpErr := changeSwarm(userName, clusterName, swarmName, storagePath, scale)
+	output = output + tmpOutPut + "\n"
 	errput = errput + tmpErrPut + "\n"
-	if tmpErr!=nil {
+	if tmpErr != nil {
 		err = tmpErr
 		return
 	}
 	return
 }
-func changeSwarm(userName string, clusterName string,swarmName string, scale int) (output string, errput string, err error) {
+func changeSwarm(userName, clusterName, swarmName, storagePath string, scale int) (output, errput string, err error) {
 	var commandTextBuffer bytes.Buffer
 	str := strconv.Itoa(scale)
 	commandTextBuffer.WriteString("eval ")
-	commandTextBuffer.WriteString("`docker-machine env --swarm ")
-	commandTextBuffer.WriteString(userName+"` &&")
+	commandTextBuffer.WriteString("`docker-machine ")
+	commandTextBuffer.WriteString("--storage-path " + storagePath + " ")
+	commandTextBuffer.WriteString("env --swarm ")
+	commandTextBuffer.WriteString(swarmName + "` &&")
 	commandTextBuffer.WriteString("docker-compose -f ")
-	commandTextBuffer.WriteString("./"+userName+"/"+clusterName+"/docker-compose.yml ")
+	commandTextBuffer.WriteString("./" + userName + "/" + clusterName + "/docker-compose.yml ")
 	commandTextBuffer.WriteString("scale ")
 	commandTextBuffer.WriteString("zookeeper")
 	commandTextBuffer.WriteString("=3 ")
@@ -33,7 +36,7 @@ func changeSwarm(userName string, clusterName string,swarmName string, scale int
 	commandTextBuffer.WriteString("marathon")
 	commandTextBuffer.WriteString("=3 ")
 	commandTextBuffer.WriteString("mesosslave")
-	commandTextBuffer.WriteString("="+str)
+	commandTextBuffer.WriteString("=" + str)
 	logrus.Infof(commandTextBuffer.String())
 	logrus.Infof("Change Swarm to: %s", userName)
 	output, errput, err = ExecCommand(commandTextBuffer.String())
@@ -43,12 +46,12 @@ func changeSwarm(userName string, clusterName string,swarmName string, scale int
 // masterList: ["10.10.10.1", "10.10.10.2", "10.10.10.3"]
 // nodeList node=publicIp: ["hostname1=10.10.10.1", "hostname2=10.10.10.2", "hostname2=10.10.10.3"]
 // scale mesosslave
-func InstallCluster(userName string, clusterName string, swarmName string, masterList []string, nodeList []string, scale int  ) error {
-	err:= fillEnvFile(userName, clusterName, masterList, nodeList )
+func InstallCluster(userName, clusterName, swarmName, storagePath string, masterList []string, nodeList []string, scale int) error {
+	err := fillEnvFile(userName, clusterName, masterList, nodeList)
 	if err != nil {
 		return err
 	}
-	_,tmpErr,err :=clusterCompose(userName, clusterName, swarmName, scale)
+	_, tmpErr, err := clusterCompose(userName, clusterName, swarmName, storagePath, scale)
 	if err != nil {
 		logrus.Infof(tmpErr)
 		return err
@@ -95,7 +98,7 @@ func createOrGetEnvFile(userName string, clusterName string) (envFile *os.File, 
 		envFile, err = os.OpenFile(absoluteFilePath, os.O_RDWR, 0)
 	} else {
 		os.MkdirAll(absolutePath, os.ModePerm)
-		_, err = copyFile(absolutePath+"/docker-compose.yml","/linker/config/docker-compose.yml")
+		_, err = copyFile(absolutePath+"/docker-compose.yml", "/linker/config/docker-compose.yml")
 		if err != nil {
 			return
 		}

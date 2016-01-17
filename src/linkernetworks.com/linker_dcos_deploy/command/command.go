@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/Sirupsen/logrus"
 	"io/ioutil"
 	"os/exec"
 	"strings"
@@ -10,22 +11,29 @@ func ExecCommand(input string) (output string, errput string, err error) {
 	var retoutput string
 	var reterrput string
 	cmd := exec.Command("/bin/bash", "-c", input)
+	logrus.Debugf("execute local command [%v]", cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		logrus.Errorf("init stdout failed, error is %v", err)
 		return "", "", err
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		logrus.Errorf("init stderr failed, error is %v", err)
 		return "", "", err
 	}
 
 	if err := cmd.Start(); err != nil {
+		// stdoutbytes, _ := ioutil.ReadAll(stdout)
+		// stderrbytes, _ := ioutil.ReadAll(stderr)
+		logrus.Errorf("start command failed, error is %v", err)
 		return "", "", err
 	}
 
 	bytesErr, err := ioutil.ReadAll(stderr)
 	if err != nil {
+		logrus.Errorf("read stderr failed, error is %v", err)
 		return "", "", err
 	}
 
@@ -35,6 +43,7 @@ func ExecCommand(input string) (output string, errput string, err error) {
 
 	bytes, err := ioutil.ReadAll(stdout)
 	if err != nil {
+		logrus.Errorf("read stdout failed, error is %v", err)
 		return "", reterrput, err
 	}
 
@@ -43,8 +52,11 @@ func ExecCommand(input string) (output string, errput string, err error) {
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return retoutput, reterrput, err
+		logrus.Errorf("wait command failed, error is %v", err)
+		// return "", "", err
 	}
 
+	logrus.Debugf("retouput is %v", retoutput)
+	logrus.Debugf("reterrput is %v", reterrput)
 	return retoutput, reterrput, err
 }
