@@ -83,6 +83,7 @@ func fillEnvFile(userName string, clusterName string, masterList []string, nodeL
 	envFile.WriteString("MESOS_MASTER=" + MESOS_MASTER + "\n")
 	envFile.WriteString("MARATHON_MASTER=" + MARATHON_MASTER + "\n")
 	envFile.WriteString("MARATHON_ZK=" + MARATHON_ZK + "\n")
+	envFile.WriteString("MESOS_HOSTNAME_LOOKUP=false\n")
 	for _, tmpStr := range nodeList {
 		envFile.WriteString(tmpStr + "\n")
 	}
