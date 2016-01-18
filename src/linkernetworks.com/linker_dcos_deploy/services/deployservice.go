@@ -51,6 +51,7 @@ func GetDeployService() *DeployService {
 func (p *DeployService) CreateCluster(request entity.Request) (
 	servers []entity.Server, errorCode string, err error) {
 	logrus.Infof("start to Deploy Docker Cluster...")
+	sshUser := request.ProviderInfo.Provider.SshUser
 	//Call the Docker Machines to create machines, change /etc/hosts and Replace PubKey File
 	servers, swarmServers, mgmtServers, dnsServers, _, err := dockerMachineCreateCluster(request)
 
@@ -87,7 +88,8 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 
 	//copy the config file to target dns server
 	for _, server := range dnsServers {
-		_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/config && sudo chown -R ubuntu:ubuntu /linker", storagePath)
+		commandStr := fmt.Sprintf("sudo mkdir -p /linker/config && sudo chown -R %s:%s /linker", sshUser, sshUser)
+		_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
 		if err != nil {
 			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
 			logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
@@ -121,7 +123,8 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	if request.IsLinkerMgmt {
 		//copy the key for mongo db
 		for _, server := range mgmtServers {
-			_, _, err = command.ExecCommandOnMachine(server.Hostname, "sudo mkdir -p /linker/key && sudo chown -R ubuntu:ubuntu /linker", storagePath)
+			commandStr := fmt.Sprintf("sudo mkdir -p /linker/key && sudo chown -R %s:%s /linker", sshUser, sshUser)
+			_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
 			if err != nil {
 				errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
 				logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)

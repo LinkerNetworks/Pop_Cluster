@@ -19,7 +19,7 @@ var (
 	}
 	provider dcosentity.Provider = dcosentity.Provider{
 		ProviderType: "amazonec2",
-		SshUser:      "ubuntu",
+		SshUser:      "ec2-user",
 	}
 	awsEC2Info dcosentity.AwsEC2 = dcosentity.AwsEC2{
 		AccessKey:    "AKIAIRZM7G4QZN4TJZQA",
