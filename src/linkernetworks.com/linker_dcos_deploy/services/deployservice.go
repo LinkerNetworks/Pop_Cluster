@@ -326,7 +326,7 @@ func changeDnsConfig(mgmtServers []entity.Server) (err error) {
 	for i, server := range mgmtServers {
 		commandZkBuffer.WriteString(server.IpAddress)
 		commandZkBuffer.WriteString(":2181")
-		if i < len(mgmtServers) {
+		if i < (len(mgmtServers) - 1) {
 			commandZkBuffer.WriteString(",")
 		}
 		var commandMasterBuffer bytes.Buffer
@@ -419,7 +419,7 @@ func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, 
 			server.IsSlave = true
 			swarmServers = append(swarmServers, server)
 			mgmtServers = append(mgmtServers, server)
-			dnsServers = append(dnsServers, swarmMasterServer)
+			dnsServers = append(dnsServers, server)
 			servers = append(servers, server)
 		}
 	} else {

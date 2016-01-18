@@ -4,8 +4,8 @@ import (
 	"github.com/Sirupsen/logrus"
 	"linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_dcos_deploy/command"
-	"sync"
 	"strings"
+	"sync"
 )
 
 type DockerComposeService struct {
@@ -48,12 +48,12 @@ func (p *DockerComposeService) Create(username, clusterName string, allServers [
 		if tmpHost.IsMaster {
 			masterList = append(masterList, tmpHost.PrivateIpAddress)
 		}
-		if tmpHost.IsSlave {
-			strTmp := strings.Replace(tmpHost.Hostname,".","_",-1)
-			strTmp = strings.Replace(strTmp,"-","_",-1)
-			tmpStr := strTmp + "=" + tmpHost.IpAddress
-			nodeList = append(nodeList, tmpStr)
-		}
+		// if tmpHost.IsSlave {
+		strTmp := strings.Replace(tmpHost.Hostname, ".", "_", -1)
+		strTmp = strings.Replace(strTmp, "-", "_", -1)
+		tmpStr := strTmp + "=" + tmpHost.IpAddress
+		nodeList = append(nodeList, tmpStr)
+		// }
 	}
 	return command.InstallCluster(username, clusterName, swarmMaster, storagePath, masterList, nodeList, scale)
 }
