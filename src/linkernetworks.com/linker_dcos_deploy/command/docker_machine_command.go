@@ -91,7 +91,7 @@ func ExecCommandOnMachine(hostname, command, storagePath string) (output string,
 	commandTextBuffer.WriteString("--storage-path " + storagePath + " ")
 	commandTextBuffer.WriteString("ssh ")
 	commandTextBuffer.WriteString(hostname)
-	commandTextBuffer.WriteString(" \"")
+	commandTextBuffer.WriteString(" -t \"")
 	commandTextBuffer.WriteString(command)
 	commandTextBuffer.WriteString("\"")
 
