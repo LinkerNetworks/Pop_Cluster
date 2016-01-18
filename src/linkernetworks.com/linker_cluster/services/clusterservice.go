@@ -139,16 +139,11 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 		return
 	}
 
-	//create hosts
-	master_count := 3
-	slave_count := cluster.Instances - master_count
-
-	for i := 0; i < master_count; i++ {
+	for i := 0; i < cluster.Instances; i++ {
 		host := entity.Host{}
 		host.ClusterId = cluster.ObjectId.Hex()
 		host.ClusterName = cluster.Name
 		host.Status = HOST_STATUS_DEPLOYING
-		host.IsMasterNode = true
 		host.UserId = cluster.UserId
 		host.TimeCreate = dao.GetCurrentTime()
 		host.TimeUpdate = host.TimeCreate
@@ -156,18 +151,6 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 		go GetHostService().Create(host, x_auth_token)
 	}
 
-	for i := 0; i < slave_count; i++ {
-		host := entity.Host{}
-		host.ClusterId = cluster.ObjectId.Hex()
-		host.ClusterName = cluster.Name
-		host.Status = HOST_STATUS_DEPLOYING
-		host.IsMasterNode = false
-		host.UserId = cluster.UserId
-		host.TimeCreate = dao.GetCurrentTime()
-		host.TimeUpdate = host.TimeCreate
-
-		go GetHostService().Create(host, x_auth_token)
-	}
 	return
 }
 
@@ -212,7 +195,19 @@ func (p *ClusterService) CreateMgmtCluster(cluster entity.Cluster, x_auth_token 
 		logrus.Errorf("create cluster [%v] to bson error is %v", cluster, err)
 		return
 	}
-	//TODO create hosts?
+
+	for i := 0; i < cluster.Instances; i++ {
+		host := entity.Host{}
+		host.ClusterId = cluster.ObjectId.Hex()
+		host.ClusterName = cluster.Name
+		host.Status = HOST_STATUS_DEPLOYING
+		host.UserId = cluster.UserId
+		host.TimeCreate = dao.GetCurrentTime()
+		host.TimeUpdate = host.TimeCreate
+
+		go GetHostService().Create(host, x_auth_token)
+	}
+
 	return
 }
 

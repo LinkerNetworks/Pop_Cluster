@@ -20,3 +20,9 @@ func (p *LbClient) GetUserMgmtEndpoint() (endpoint string, err error) {
 	endpoint = p.Host + ":" + userMgmtPort
 	return
 }
+
+func (p *LbClient) GetDeployEndpoint() (endpoint string, err error) {
+	deployPort := UTIL.Props.MustGetString("lb.deploy.port")
+	endpoint = p.Host + ":" + deployPort
+	return
+}

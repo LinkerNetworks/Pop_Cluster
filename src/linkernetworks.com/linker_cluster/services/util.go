@@ -10,6 +10,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"linkernetworks.com/linker_cluster/common"
+	dcosentity "linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_common_lib/httpclient"
 	"linkernetworks.com/linker_common_lib/persistence/entity"
 	"linkernetworks.com/linker_common_lib/rest/response"
@@ -124,6 +125,37 @@ func GetUserById(userId string, token string) (user *entity.User, err error) {
 	user = new(entity.User)
 	err = getRetFromResponse(data, user)
 	return
+}
+
+func SendRequest2DcosDeploy(request dcosentity.Request) (servers *[]dcosentity.Server, err error) {
+	body, err := json.Marshal(request)
+	deployUrl, err := common.UTIL.LbClient.GetDeployEndpoint()
+	if err != nil {
+		logrus.Errorf("get deploy endpoint err is %v", err)
+		return nil, err
+	}
+	url := strings.Join([]string{"http://", deployUrl, "/v1/deploy"}, "")
+	logrus.Debugln("get deploy url=" + url)
+	resp, err := httpclient.Http_post(url, string(body),
+		httpclient.Header{"Content-Type", "application/json"})
+	if resp == nil {
+		return nil, errors.New("Nil pointer")
+	}
+	defer resp.Body.Close()
+	if err != nil {
+		logrus.Errorf("send http post to dcos deployment error %v", err)
+		return nil, err
+	}
+
+	data, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		logrus.Errorf("http status code from dcos deployment failed %v", string(data))
+		return nil, errors.New("http status code from dcos deployment failed")
+	}
+
+	servers = new([]dcosentity.Server)
+	err = getRetFromResponse(data, servers)
+	return servers, err
 }
 
 func getRetFromResponse(data []byte, obj interface{}) (err error) {
