@@ -49,11 +49,11 @@ func (m *MarathonService) CreateGroup(payload []byte, marathonEndpoint string) (
 	logrus.Debugf("start to post group json %b to marathon %v", string(payload), marathonEndpoint)
 	resp, err := httpclient.Http_post(url, string(payload),
 		httpclient.Header{"Content-Type", "application/json"})
-	defer resp.Body.Close()
 	if err != nil {
 		logrus.Errorf("post group to marathon failed, error is %v", err)
 		return
 	}
+	defer resp.Body.Close()
 
 	// if response status is greater than 400, means marathon returns error
 	// else parse body, findout deploymentId, and return

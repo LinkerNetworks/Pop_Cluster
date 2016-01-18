@@ -42,7 +42,7 @@ func (p *DockerMachineService) Create(username, clusername string, swarm, swarmM
 	logrus.Infof("start to create Docker Machine...")
 
 	providerType := ""
-	hostname := username + "_" + clusername + "_" + strings.Replace(uuid.New(), "-", "_", -1)
+	hostname := username + "." + clusername + "." + uuid.New()
 	storagePath := DOCKERMACHINE_STORAGEPATH_PREFIX + username + "/" + clusername + ""
 
 	err = os.MkdirAll(storagePath, os.ModePerm)

@@ -5,6 +5,7 @@ import (
 	"linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_dcos_deploy/command"
 	"sync"
+	"strings"
 )
 
 type DockerComposeService struct {
@@ -25,6 +26,16 @@ func GetDockerComposeService() *DockerComposeService {
 
 }
 
+func (p *DockerComposeService) Add(username, clusterName string, addServer []entity.Server, curScale int) error {
+	//Todo
+	return nil
+}
+
+func (p *DockerComposeService) Remove(username, clusterName, serverName string) error {
+	//Todo
+	return nil
+}
+
 func (p *DockerComposeService) Create(username, clusterName string, allServers []entity.Server, scale int) error {
 	nodeList := []string{}
 	masterList := []string{}
@@ -38,7 +49,9 @@ func (p *DockerComposeService) Create(username, clusterName string, allServers [
 			masterList = append(masterList, tmpHost.PrivateIpAddress)
 		}
 		if tmpHost.IsSlave {
-			tmpStr := tmpHost.Hostname + "=" + tmpHost.IpAddress
+			strTmp := strings.Replace(tmpHost.Hostname,".","_",-1)
+			strTmp = strings.Replace(strTmp,"-","_",-1)
+			tmpStr := strTmp + "=" + tmpHost.IpAddress
 			nodeList = append(nodeList, tmpStr)
 		}
 	}
