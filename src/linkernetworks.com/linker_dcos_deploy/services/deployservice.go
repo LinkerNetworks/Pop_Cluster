@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_dcos_deploy/command"
+	"strings"
 	"sync"
 	"time"
 )
@@ -113,9 +114,18 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	//call the marathon to deploy the mesos-DNS and marathon-lb for Linker-Management Cluster
 	payload := prepareDNSandLbJson(request.UserName, request.ClusterName, dnsServers[0], request.IsLinkerMgmt)
 	deploymentId, _ := GetMarathonService().CreateGroup(payload, marathonEndpoint)
-	if waitForMarathon(deploymentId, marathonEndpoint) {
+	flag, err := waitForMarathon(deploymentId, marathonEndpoint)
+	if flag {
+		if err != nil {
+			errorCode = DEPLOY_ERROR_CREATE
+			logrus.Errorf("deploy the dns and lb failed, err is %v", err)
+			return
+		} else {
+			logrus.Infof("marathon deployment finished successfully...")
+		}
+	} else {
 		errorCode = DEPLOY_ERROR_CREATE
-		logrus.Errorf("deploy the dns and lb fail on, err is %v", err)
+		logrus.Errorf("deploy the dns and lb failed because of timeout, err is %v", err)
 		return
 	}
 
@@ -141,9 +151,18 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 		//call the marathon to deploy the linker service containers for Linker-Management Cluster
 		payload = prepareLinkerComponents(mgmtServers)
 		deploymentId, _ = GetMarathonService().CreateGroup(payload, marathonEndpoint)
-		if waitForMarathon(deploymentId, marathonEndpoint) {
+		flag, err = waitForMarathon(deploymentId, marathonEndpoint)
+		if flag {
+			if err != nil {
+				errorCode = DEPLOY_ERROR_CREATE
+				logrus.Errorf("deploy the linker management components fail, err is %v", err)
+				return
+			} else {
+				logrus.Infof("deploy the linker management components finished successfully...")
+			}
+		} else {
 			errorCode = DEPLOY_ERROR_CREATE
-			logrus.Errorf("deploy the linker components fail , err is %v", err)
+			logrus.Errorf("deploy the linker management components fail because of timeout, err is %v", err)
 			return
 		}
 	}
@@ -151,9 +170,18 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	//call the marathon to deploy the mesos-UI for Linker-Management Cluster and User-Management Cluster
 	payload = prepareMesosUI(mgmtServers, dnsServers[0], request.IsLinkerMgmt)
 	deploymentId, _ = GetMarathonService().CreateGroup(payload, marathonEndpoint)
-	if waitForMarathon(deploymentId, marathonEndpoint) {
+	flag, err = waitForMarathon(deploymentId, marathonEndpoint)
+	if flag {
+		if err != nil {
+			errorCode = DEPLOY_ERROR_CREATE
+			logrus.Errorf("deploy the linker ui and user mgmt components fail, err is %v", err)
+			return
+		} else {
+			logrus.Infof("deploy the linker ui and user mgmt components finished successfully...")
+		}
+	} else {
 		errorCode = DEPLOY_ERROR_CREATE
-		logrus.Errorf("deploy the linker components fail , err is %v", err)
+		logrus.Errorf("deploy the linker ui and user mgmt components fail because of timeout, err is %v", err)
 		return
 	}
 	return
@@ -291,20 +319,24 @@ func dockerComposeCreateCluster(username, clustername string, swarmServers []ent
 	return err
 }
 
-func waitForMarathon(deploymentId, marathonEndpoint string) (flag bool) {
+func waitForMarathon(deploymentId, marathonEndpoint string) (flag bool, err error) {
 	flag = false
 	logrus.Debugf("check status with deploymentId [%v]", deploymentId)
 	for i := 0; i < RetryTime; i++ {
 		// get lock by service group instance id
-		flag, _ = GetMarathonService().IsDeploymentDone(deploymentId, marathonEndpoint)
+		flag, err = GetMarathonService().IsDeploymentDone(deploymentId, marathonEndpoint)
 		if flag {
-			logrus.Debugf("deployment Finished with  deploymentId[%v]", deploymentId)
-			return flag
+			if finished := strings.Contains(err.Error(), "EOF"); finished {
+				logrus.Debugf("deployment Finished with  deploymentId[%v]", deploymentId)
+				return true, nil
+			} else {
+				return true, err
+			}
 		} else {
 			time.Sleep(30000 * time.Millisecond)
 		}
 	}
-	return flag
+	return flag, err
 }
 
 func changeDnsConfig(mgmtServers []entity.Server) (err error) {
