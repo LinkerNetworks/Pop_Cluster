@@ -45,6 +45,7 @@ func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaste
 		commandTextBuffer.WriteString("--amazonec2-secret-key " + awsec2.SecretKey + " ")
 		commandTextBuffer.WriteString("--amazonec2-region " + awsec2.Region + " ")
 		commandTextBuffer.WriteString("--amazonec2-vpc-id " + awsec2.VpcId + " ")
+		commandTextBuffer.WriteString("--amazonec2-ssh-user " + provider.Provider.SshUser + " ")
 		commandTextBuffer.WriteString("--amazonec2-instance-type " + awsec2.InstanceType + " ")
 		if awsec2.ImageId != "" {
 			commandTextBuffer.WriteString("--amazonec2-ami " + awsec2.ImageId + " ")
@@ -52,6 +53,7 @@ func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaste
 		if awsec2.RootSize != "" {
 			commandTextBuffer.WriteString("--amazonec2-root-size " + awsec2.RootSize + " ")
 		}
+
 		//			commandTextBuffer.WriteString("--amazonec2-instance-type " + awsec2.InstanceType + " ")
 
 	default:
