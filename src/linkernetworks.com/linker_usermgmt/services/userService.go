@@ -34,6 +34,7 @@ var USER_ERROR_DELETE = "E10010"
 var USER_ERROR_GET = "E10011"
 var USER_ERROR_LOGIN = "E10012"
 var USER_ERROR_EXISTCLUSTER = "E10013"
+var USER_ERROR_LEGAL = "E10014"
 
 var userService *UserService = nil
 var userOnce sync.Once

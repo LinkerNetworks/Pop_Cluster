@@ -1,6 +1,7 @@
 package usermgmt
 
 import (
+	"regexp"
 	"encoding/json"
 	"errors"
 
@@ -88,6 +89,17 @@ func (p *Resource) UserValidateHandler(req *restful.Request, resp *restful.Respo
 		response.WriteStatusError(services.COMMON_ERROR_INVALIDATE, errors.New("username should not be null"), resp)
 		return
 	}
+	logrus.Infof("username is %v",username)
+	
+	isUse := isUsernameValid(username)
+	logrus.Infof("start to test username")
+
+	if !isUse {
+		logrus.Errorf("username is not legal!")
+		response.WriteStatusError(services.USER_ERROR_LEGAL, errors.New("username is not legal"), resp)
+		return
+	}
+	
 	errorCode, _, err := services.GetUserService().Validate(username, token)
 	if err != nil {
 		response.WriteStatusError(errorCode, err, resp)
@@ -96,6 +108,11 @@ func (p *Resource) UserValidateHandler(req *restful.Request, resp *restful.Respo
 	
 	response.WriteSuccess(resp)
 	
+}
+
+func isUsernameValid (username string) bool {
+	reg := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{1,255}$`)
+	return reg.MatchString(username)
 }
 
 // CheckAndGenerateToken parses the http request and registry a new user.

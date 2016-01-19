@@ -2,7 +2,6 @@ package services
 
 import (
 	"errors"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,7 +61,7 @@ func (p *ClusterService) Create(cluster entity.Cluster, x_auth_token string) (ne
 	}
 
 	//check cluster name
-	if !isClusterNameValid(cluster.Name) {
+	if !IsClusterNameValid(cluster.Name) {
 		return nil, CLUSTER_ERROR_CREATE, errors.New("Invalid cluster name.")
 	}
 
@@ -139,6 +138,7 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 		return
 	}
 
+	//add records of hosts in db
 	for i := 0; i < cluster.Instances; i++ {
 		host := entity.Host{}
 		host.ClusterId = cluster.ObjectId.Hex()
@@ -148,8 +148,11 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 		host.TimeCreate = dao.GetCurrentTime()
 		host.TimeUpdate = host.TimeCreate
 
-		go GetHostService().Create(host, x_auth_token)
+		GetHostService().Create(host, x_auth_token)
 	}
+
+	//call deployment
+	go CreateCluster(cluster, x_auth_token)
 
 	return
 }
@@ -624,17 +627,4 @@ func (p *ClusterService) TerminateHosts(clusterId string, hostIds []string, x_au
 	}
 
 	return
-}
-
-//check cluster name with regex
-//letters (upper or lowercase)
-//numbers (0-9)
-//underscore (_)
-//dash (-)
-//point (.)
-//length 1-255
-//no spaces! or other characters
-func isClusterNameValid(name string) bool {
-	reg := regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,255}$`)
-	return reg.MatchString(name)
 }

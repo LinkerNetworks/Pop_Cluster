@@ -22,7 +22,10 @@ func Http_get(url string, body string, headers ...Header) (resp *http.Response, 
 	} else {
 		Body = ioutil.NopCloser(strings.NewReader(body))
 	}
-	req, _ := http.NewRequest("GET", url, Body)
+	req, err := http.NewRequest("GET", url, Body)
+	if err != nil {
+		return
+	}
 	for _, header := range headers {
 		req.Header.Set(header.Key, header.Value)
 	}

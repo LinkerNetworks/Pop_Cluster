@@ -23,16 +23,16 @@ var (
 	}
 	awsEC2Info dcosentity.AwsEC2 = dcosentity.AwsEC2{
 		AccessKey:    "AKIAIRZM7G4QZN4TJZQA",
-		SecretKey:    "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",
-		ImageId:      "",
-		InstanceType: "t2.micro",
-		RootSize:     "",
+		SecretKey:    "Dur2IRmTkgkdbww+FgKSLTvtCxa9DpXmh1EmiRWp",
+		ImageId:      "ami-faf13d99",
+		InstanceType: "t2.medium",
+		RootSize:     "100",
 		Region:       "ap-southeast-1",
-		VpcId:        "vpc-4630a923",
+		VpcId:        "vpc-76831913",
 	}
 )
 
-func CreateCluster(cluster entity.Cluster) {
+func CreateCluster(cluster entity.Cluster, x_auth_token string) {
 	var request dcosentity.Request
 	request.UserName = cluster.Owner
 	request.ClusterName = cluster.Name
@@ -55,37 +55,78 @@ func CreateCluster(cluster entity.Cluster) {
 	}
 
 	//loop servers and update hosts in database
-	err = updateHosts(servers)
+	err = updateHosts(cluster.ObjectId.Hex(), servers, x_auth_token)
 	if err != nil {
 		logrus.Errorf("update hosts error is %v", err)
 		return
 	}
 }
 
-func updateHosts(servers *[]dcosentity.Server) (err error) {
-	for _, server := range *servers {
-		var host entity.Host
-		host.HostName = server.Hostname
-		host.IP = server.IpAddress
-		host.PrivateIp = server.PrivateIpAddress
+//update all hosts of a cluster by userId
+//no identifier in entity Server, overwrite hosts created before in db
+func updateHosts(clusterId string, servers *[]dcosentity.Server, x_auth_token string) (err error) {
+	//check if all nodes successfully deployed
+	for i, server := range *servers {
+		if !isServerDeployed(server) {
+			logrus.Errorf("Not all nodes successfully deployed. Server index [%d] is [%v]", i, server)
+			return errors.New("Not all nodes successfully deployed")
+		}
+	}
+
+	//query all hosts of a cluster from db
+	var hosts []entity.Host
+	total, hosts, _, err := GetHostService().QueryAllByClusterId(clusterId, 0, 0, x_auth_token)
+	if err != nil {
+		logrus.Errorf("query all hosts by cluster id error is [%v]", err)
+		return err
+	}
+	if total != len(*servers) {
+		logrus.Errorf("len of server array [%d] in dcos_deploy reponse does not equals to number of hosts [%d] in db", len(*servers), total)
+		return errors.New("len of server array in dcos_deploy reponse does not equals to number of hosts in db")
+	}
+
+	//update variable hosts
+	for i, server := range *servers {
+		hosts[i].HostName = server.Hostname
+		hosts[i].IP = server.IpAddress
+		hosts[i].PrivateIp = server.PrivateIpAddress
 		if server.IsMaster {
-			host.IsMasterNode = true
+			hosts[i].IsMasterNode = true
 		}
 		if server.IsSlave {
-			host.IsSlaveNode = true
+			hosts[i].IsSlaveNode = true
 		}
 		if server.IsSwarmMaster {
-			host.IsSwarmMaster = true
+			hosts[i].IsSwarmMaster = true
 		}
-		array := strings.Split(server.StoragePath, "/")
-		if len(array) != 2 {
-			return errors.New("Cannot parse storage path")
-		}
-		host.UserName = array[0]
-		host.ClusterName = array[1]
 
-		//update host by clustername
-		//		err := updateHost(host.UserName, host.ClusterName)
+		//TODO split string like /linker/docker/sysadmin/cluster-test4
+		//		array := strings.Split(server.StoragePath, "/")
+		//		if len(array) != 2 {
+		//			return errors.New("Cannot parse storage path")
+		//		}
+		//		hosts[i].UserName = array[0]
+		//		hosts[i].ClusterName = array[1]
+
+		//update hosts to db
+		_, _, err := GetHostService().UpdateById(hosts[i].ObjectId.Hex(), hosts[i], x_auth_token)
+		if err != nil {
+			logrus.Errorf("update host by id error is [%v]", err)
+			return err
+		}
 	}
+
 	return
+}
+
+//check if the node is successfully deployed
+func isServerDeployed(server dcosentity.Server) bool {
+	if len(strings.TrimSpace(server.Hostname)) > 0 &&
+		IsIpAddressValid(strings.TrimSpace(server.IpAddress)) &&
+		IsIpAddressValid(strings.TrimSpace(server.PrivateIpAddress)) &&
+		len(strings.TrimSpace(server.StoragePath)) > 0 {
+		return true
+	} else {
+		return false
+	}
 }

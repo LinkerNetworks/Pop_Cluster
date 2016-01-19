@@ -32,7 +32,9 @@ func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaste
 		commandTextBuffer.WriteString("--openstack-tenant-name " + openstack.TenantName + " ")
 		commandTextBuffer.WriteString("--openstack-flavor-name " + openstack.FlavorName + " ")
 		commandTextBuffer.WriteString("--openstack-image-name " + openstack.ImageName + " ")
-		commandTextBuffer.WriteString("--openstack-ssh-user " + provider.Provider.SshUser + " ")
+		if provider.Provider.SshUser != "" {
+			commandTextBuffer.WriteString("--openstack-ssh-user " + provider.Provider.SshUser + " ")
+		}
 		commandTextBuffer.WriteString("--openstack-sec-groups " + openstack.SecurityGroup + " ")
 		commandTextBuffer.WriteString("--openstack-floatingip-pool " + openstack.IpPoolName + " ")
 		commandTextBuffer.WriteString("--openstack-nova-network " + openstack.NovaNetwork + " ")

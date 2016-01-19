@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"regexp"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
@@ -128,6 +129,7 @@ func GetUserById(userId string, token string) (user *entity.User, err error) {
 }
 
 func SendRequest2DcosDeploy(request dcosentity.Request) (servers *[]dcosentity.Server, err error) {
+	logrus.Infoln("Call deployment to create cluster")
 	body, err := json.Marshal(request)
 	deployUrl, err := common.UTIL.LbClient.GetDeployEndpoint()
 	if err != nil {
@@ -197,4 +199,23 @@ func getCountFromResponse(data []byte) (count int, err error) {
 func HashString(password string) string {
 	encry := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(encry[:])
+}
+
+//check if ip is a valid IPv4 address
+func IsIpAddressValid(ip string) bool {
+	reg := regexp.MustCompile(`\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b`)
+	return reg.MatchString(ip)
+}
+
+//check cluster name with regex
+//letters (upper or lowercase)
+//numbers (0-9)
+//underscore (_)
+//dash (-)
+//point (.)
+//length 1-255
+//no spaces! or other characters
+func IsClusterNameValid(name string) bool {
+	reg := regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,255}$`)
+	return reg.MatchString(name)
 }

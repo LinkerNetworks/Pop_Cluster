@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_dcos_deploy/command"
-	"strings"
+	// "strings"
 	"sync"
 	"time"
 )
@@ -115,14 +115,13 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	payload := prepareDNSandLbJson(request.UserName, request.ClusterName, dnsServers[0], request.IsLinkerMgmt)
 	deploymentId, _ := GetMarathonService().CreateGroup(payload, marathonEndpoint)
 	flag, err := waitForMarathon(deploymentId, marathonEndpoint)
+	if err != nil {
+		errorCode = DEPLOY_ERROR_CREATE
+		logrus.Errorf("deploy the dns and lb failed, err is %v", err)
+		return
+	}
 	if flag {
-		if err != nil {
-			errorCode = DEPLOY_ERROR_CREATE
-			logrus.Errorf("deploy the dns and lb failed, err is %v", err)
-			return
-		} else {
-			logrus.Infof("marathon deployment finished successfully...")
-		}
+		logrus.Infof("marathon deployment finished successfully...")
 	} else {
 		errorCode = DEPLOY_ERROR_CREATE
 		logrus.Errorf("deploy the dns and lb failed because of timeout, err is %v", err)
@@ -149,7 +148,7 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 		}
 
 		//call the marathon to deploy the linker service containers for Linker-Management Cluster
-		payload = prepareLinkerComponents(mgmtServers)
+		payload = prepareLinkerComponents(mgmtServers, swarmServers[0])
 		deploymentId, _ = GetMarathonService().CreateGroup(payload, marathonEndpoint)
 		flag, err = waitForMarathon(deploymentId, marathonEndpoint)
 		if flag {
@@ -187,7 +186,7 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	return
 }
 
-func prepareLinkerComponents(mgmtServers []entity.Server) (payload []byte) {
+func prepareLinkerComponents(mgmtServers []entity.Server, swarmServer entity.Server) (payload []byte) {
 	payload, err := ioutil.ReadFile("/linker/marathon/marathon-linkercomponents.json")
 
 	if err != nil {
@@ -218,6 +217,12 @@ func prepareLinkerComponents(mgmtServers []entity.Server) (payload []byte) {
 		for _, app := range group.Apps {
 			if app.Env != nil && app.Env["MONGODB_NODES"] != "" {
 				app.Env["MONGODB_NODES"] = mongoserverlist
+			}
+
+			if app.Id == "deployer" {
+				constraint := []string{"hostname", "CLUSTER", swarmServer.IpAddress}
+				app.Constraints = [][]string{}
+				app.Constraints = append(app.Constraints, constraint)
 			}
 		}
 	}
@@ -329,18 +334,16 @@ func waitForMarathon(deploymentId, marathonEndpoint string) (flag bool, err erro
 	for i := 0; i < RetryTime; i++ {
 		// get lock by service group instance id
 		flag, err = GetMarathonService().IsDeploymentDone(deploymentId, marathonEndpoint)
+		if err != nil {
+			continue
+		}
 		if flag {
-			if finished := strings.Contains(err.Error(), "EOF"); finished {
-				logrus.Debugf("deployment Finished with  deploymentId[%v]", deploymentId)
-				return true, nil
-			} else {
-				return true, err
-			}
+			return
 		} else {
 			time.Sleep(30000 * time.Millisecond)
 		}
 	}
-	return flag, err
+	return
 }
 
 func changeDnsConfig(mgmtServers []entity.Server) (err error) {

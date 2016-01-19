@@ -89,16 +89,17 @@ func (m *MarathonService) IsDeploymentDone(deploymentId, marathonEndpoint string
 	// if response status is greater than 400, means marathon returns error
 	// else returned body, findout deploymentId, and return
 	data, _ := ioutil.ReadAll(resp.Body)
+	datastr := string(data)
 	if resp.StatusCode >= 400 {
 		logrus.Errorf("marathon returned error code is %v", resp.StatusCode)
-		logrus.Errorf("detail is %v", string(data))
-		err = errors.New(string(data))
+		logrus.Errorf("detail is %v", datastr)
+		err = errors.New(datastr)
 		return
 	}
 
 	// Parse data: marathon json data
 	jsondata := []map[string]interface{}{}
-	result := json.NewDecoder(strings.NewReader(string(data)))
+	result := json.NewDecoder(strings.NewReader(datastr))
 	result.Decode(&jsondata)
 	for i := 0; i < len(jsondata); i++ {
 		jq := jsonq.NewQuery(jsondata[i])
