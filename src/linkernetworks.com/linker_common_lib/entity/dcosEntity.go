@@ -81,6 +81,7 @@ type App struct {
 	Args        []string          `json:"args,omitempty"`
 	Container   Container         `json:"container,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
 	Constraints [][]string        `json:"constraints,omitempty"`
 	Executor    string            `json:"executor,omitempty"`
 }
