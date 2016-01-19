@@ -216,7 +216,9 @@ func prepareLinkerComponents(mgmtServers []entity.Server) (payload []byte) {
 	for _, group := range serviceGroup.Groups {
 		// There is no case for group embeded group.
 		for _, app := range group.Apps {
-			app.Env["MONGODB_NODES"] = mongoserverlist
+			if app.Env != nil && app.Env["MONGODB_NODES"] != "" {
+				app.Env["MONGODB_NODES"] = mongoserverlist
+			}
 		}
 	}
 
@@ -225,6 +227,8 @@ func prepareLinkerComponents(mgmtServers []entity.Server) (payload []byte) {
 		logrus.Errorf("Marshal linkercomponents err is %v", err)
 		return
 	}
+
+	logrus.Debug("payload is : " + string(payload))
 
 	return payload
 }
