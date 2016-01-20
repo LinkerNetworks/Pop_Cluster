@@ -23,6 +23,8 @@ echo "Downloading uuid ..."
 go get -v -u code.google.com/p/go-uuid/uuid
 echo "Downloading gomail"
 go get -v -u gopkg.in/gomail.v2
+echo "Downloading assert ..."
+go get -v -u github.com/bmizerany/assert
 
 echo "Start to build linker cluster ..."
 rm -f ${ARTIFACT}

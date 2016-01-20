@@ -6,7 +6,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"linkernetworks.com/linker_common_lib/entity"
 	"os"
-	// "strings"
 	"sync"
 
 	command "linkernetworks.com/linker_dcos_deploy/command"
@@ -43,7 +42,7 @@ func (p *DockerMachineService) Create(username, clusername string, swarm, swarmM
 
 	providerType := ""
 	hostname := username + "." + clusername + "." + uuid.New()
-	storagePath := DOCKERMACHINE_STORAGEPATH_PREFIX + username + "/" + clusername + ""
+	storagePath := p.ComposeStoragePath(username, clusername)
 
 	err = os.MkdirAll(storagePath, os.ModePerm)
 	if err != nil {
@@ -71,7 +70,7 @@ func (p *DockerMachineService) Create(username, clusername string, swarm, swarmM
 		return
 	}
 
-	server = entity.Server{hostname, ipAddress, privateIPAddress, false, false, false, storagePath}
+	server = entity.Server{hostname, ipAddress, privateIPAddress, false, false, false, storagePath, false, false, false}
 	//	server.Hostname = hostname
 	//	server.IpAddress = ipAddress
 	//	server.PrivateIpAddress = privateIPAddress
@@ -86,26 +85,32 @@ func (p *DockerMachineService) Create(username, clusername string, swarm, swarmM
 	err = p.ReplaceKey(hostname, provider.Provider.SshUser, storagePath, server.IpAddress)
 	// errorCode, err = p.ChangeHost(hostname, privateIPAddress, storagePath)
 
+	if err == nil {
+		server.IsFullfilled = true
+	}
+
+	return
+}
+
+func (p *DockerMachineService) DeleteMachine(username, clusername, hostname string) (err error) {
+	storagePath := p.ComposeStoragePath(username, clusername)
+	_, _, err = command.DeleteMachine(hostname, storagePath)
+	if err != nil {
+		return err
+	}
 	return
 }
 
 func (p *DockerMachineService) ReplaceKey(hostname, sshUser, storagePath, publicip string) (err error) {
-	commandStr := "eval `ssh-agent` && ssh-add " + storagePath + "/machines" + "/" + hostname + "/id_rsa"
+	commandStr := "eval `ssh-agent` && ssh-add " + storagePath + "/machines" + "/" + hostname + "/id_rsa && " + "/linker/copy-ssh-id.sh " + sshUser + " " + publicip + " /linker/key/id_rsa.pub"
 
-	logrus.Infof("Executing add key command: %s", commandStr)
+	logrus.Infof("Executing add key and copy id command: %s", commandStr)
 	_, _, err = command.ExecCommand(commandStr)
 	if err != nil {
 		logrus.Errorf("Call ssh-add failed , err is %v", err)
 		return
 	}
 
-	commandStr = "/linker/copy-ssh-id.sh " + sshUser + " " + publicip
-	logrus.Infof("Executing copy key command: %s", commandStr)
-	_, _, err = command.ExecCommand(commandStr)
-	if err != nil {
-		logrus.Errorf("Call ssh-copy-id failed , err is %v", err)
-		return
-	}
 	return
 }
 
@@ -131,4 +136,9 @@ func (p *DockerMachineService) ChangeHost(hostname, ipAddress, storagePath strin
 		return
 	}
 	return
+}
+
+func (p *DockerMachineService) ComposeStoragePath(username, clusername string) string {
+	storagePath := DOCKERMACHINE_STORAGEPATH_PREFIX + username + "/" + clusername + ""
+	return storagePath
 }

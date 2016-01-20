@@ -8,6 +8,9 @@ type Server struct {
 	IsSlave          bool   `json:"isMaster"`
 	IsSwarmMaster    bool   `json:"isSwarmMaster"`
 	StoragePath      string `json:"storagePath"`
+	IsConsul		 bool	`json:"isConsul"`
+	IsFullfilled	 bool	`json:"isFullfilled"`
+	IsDnsServer		 bool	`json:"isDnsServer"`
 }
 
 type Label struct {
@@ -107,6 +110,23 @@ type Request struct {
 	ProviderInfo  ProviderInfo `json:"providerInfo"`
 }
 
+type AddNodeRequest struct {
+	UserName      string       `json:"username"`
+	ClusterName   string       `json:"clusterName"`
+	RequestId     string       `json:"requestId"`
+	CreateNumber  int          `json:"createNumber"`
+	ExistedNumber int          `json:"existedNumber"`
+	ConsulServer  string	   `json:"consulServer"`
+	ProviderInfo  ProviderInfo `json:"providerInfo"`
+	DnsServers	  []Server	   `json:"dnsServers"`	
+}
+
+type DeleteRequest struct {
+	UserName      	string       	`json:"username"`
+	ClusterName   	string       	`json:"clusterName"`
+	Servers			[]Server		`json:"servers"`
+}
+
 type ProviderInfo struct {
 	Provider      Provider  `json:"provider"`
 	OpenstackInfo Openstack `json:"openstackInfo"`
@@ -128,7 +148,6 @@ type Openstack struct {
 	SecurityGroup string `json:"securityGroup"`
 	IpPoolName    string `json:"ipPoolName"`
 	NovaNetwork   string `json:"novaNetwork"`
-	HostName      string `json:"hostname"`
 }
 
 type AwsEC2 struct {

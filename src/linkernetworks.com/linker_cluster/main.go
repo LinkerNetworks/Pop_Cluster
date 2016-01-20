@@ -58,10 +58,10 @@ func init() {
 	logFile := Props.GetString("logrus.file", "/var/log/cluster_mgmt.log")
 	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
 	if err != nil {
-		fmt.Println("error opening file %v", err)
+		fmt.Printf("error opening file %v", err)
 		f, err = os.OpenFile("cluster_mgmt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
 		if err != nil {
-			fmt.Println("still failed to open log file cluster_mgmt.log %v", err)
+			fmt.Printf("still failed to open log file cluster_mgmt.log %v", err)
 		}
 	}
 	logrus.SetOutput(f)

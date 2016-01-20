@@ -87,6 +87,19 @@ func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaste
 	return
 }
 
+func DeleteMachine(hostname, storagePath string) (output string, errput string, err error) {
+	logrus.Infof("Prepare command to delete docker machine: %s \n", hostname)
+	var commandTextBuffer bytes.Buffer
+	commandTextBuffer.WriteString("docker-machine ")
+	commandTextBuffer.WriteString("--storage-path " + storagePath + " ")
+	commandTextBuffer.WriteString("rm -y ")
+	commandTextBuffer.WriteString(hostname)
+	
+	logrus.Infof("Executing delete machine command: %s", commandTextBuffer.String())
+	output, errput, err = ExecCommand(commandTextBuffer.String())
+	return output, errput, err
+}
+
 func ExecCommandOnMachine(hostname, command, storagePath string) (output string, errput string, err error) {
 	var commandTextBuffer bytes.Buffer
 	commandTextBuffer.WriteString("docker-machine ")

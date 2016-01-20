@@ -15,7 +15,7 @@ type Resource struct {
 func (p *Resource) successUpdate(id string, created bool,
 	req *restful.Request, resp *restful.Response) {
 	// Updated document API location
-	docpath := p.documentLocation(req, id)
+	docpath := documentLocation(req, id)
 
 	// Content-Location header
 	resp.AddHeader("Content-Location", docpath)
@@ -33,7 +33,7 @@ func (p *Resource) successUpdate(id string, created bool,
 //
 // Return document location URL
 //
-func (p *Resource) documentLocation(req *restful.Request, id string) (location string) {
+func documentLocation(req *restful.Request, id string) (location string) {
 	// Get current location url
 	location = strings.TrimRight(req.Request.URL.RequestURI(), "/")
 

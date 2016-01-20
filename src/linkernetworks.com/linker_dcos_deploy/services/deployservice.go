@@ -29,6 +29,12 @@ const (
 	DEPLOY_ERROR_CHANGE_NAMESERVER string = "E60011"
 	DEPLOY_ERROR_CHANGE_DNSCONFIG  string = "E60012"
 	DEPLOY_ERROR_COPY_CONFIG_FILE  string = "E60013"
+
+	DEPLOY_ERROR_DELETE_NODE    string = "E60020"
+	DEPLOY_ERROR_DELETE_CLUSTER string = "E60021"
+
+	DEPLOY_ERROR_ADD_NODE_DOCKER_MACHINE string = "E60030"
+	DEPLOY_ERROR_ADD_NODE_DOCKER_COMPOSE string = "E60031"
 )
 
 var (
@@ -255,21 +261,22 @@ func prepareMesosUI(mgmtServers []entity.Server, dnsServer entity.Server, isLink
 		return
 	}
 
-	mongoserverlist := ""
-	var commandTextBuffer bytes.Buffer
-	for index, server := range mgmtServers {
-		commandTextBuffer.WriteString(server.PrivateIpAddress)
-		if index != len(mgmtServers)-1 {
-			commandTextBuffer.WriteString(",")
+	zkserverlist := ""
+	//make zookeeper string
+	var commandZkBuffer bytes.Buffer
+	for i, server := range mgmtServers {
+		commandZkBuffer.WriteString(server.IpAddress)
+		commandZkBuffer.WriteString(":2181")
+		if i < (len(mgmtServers) - 1) {
+			commandZkBuffer.WriteString(",")
 		}
 	}
-
-	mongoserverlist = commandTextBuffer.String()
+	zkserverlist = commandZkBuffer.String()
 
 	for _, group := range serviceGroup.Groups {
 		// There is no case for group embeded group.
 		for _, app := range group.Apps {
-			app.Env["marathon-dashboard"] = mongoserverlist
+			app.Env["Mesos_Zookeeper"] = zkserverlist
 			if !isLinkerMgmt {
 				app.Constraints = [][]string{}
 				app.Constraints = append(app.Constraints, constraint)
@@ -432,6 +439,7 @@ func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, 
 	labels := []entity.Label{}
 	labels = append(labels, requestIdLabel)
 	consuleServer, _, err := GetDockerMachineService().Create(request.UserName, request.ClusterName, false, false, "", request.ProviderInfo, labels)
+	consuleServer.IsConsul = true
 	_, _, err = command.BootUpConsul(consuleServer.Hostname, consuleServer.StoragePath)
 	if err != nil {
 		err = errors.New("Bootup Consul server error!")
@@ -492,50 +500,106 @@ func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, 
 		for i := 0; i < request.ClusterNumber-4; i++ {
 			server, _, _ := GetDockerMachineService().Create(request.UserName, request.ClusterName, true, false, consuleServer.Hostname, request.ProviderInfo, slavelabels)
 			server.IsSlave = true
+			if i == 0 {
+				server.IsDnsServer = true
+				dnsServers = append(dnsServers, server)
+			}
 			swarmServers = append(swarmServers, server)
 			servers = append(servers, server)
 			//choose the first slave server as shared server
-			if i == 0 {
-				dnsServers = append(dnsServers, server)
-			}
+
 		}
 	}
 	return
 }
 
-func (p *DeployService) DeleteCluster(x_auth_token string) (
+func (p *DeployService) DeleteCluster(username, clustername string, servers []entity.Server) (
 	errorCode string, err error) {
 	logrus.Infof("start to Delete Docker Cluster...")
 	//get the cluster name and user info to call docker machine to delete all the vms
+	var tempErr error
+	for _, server := range servers {
+		logrus.Infof("Removing docker machine node, username: %s, clustername %s, hostname %s\n", username, clustername, server.Hostname)
+		err = GetDockerMachineService().DeleteMachine(username, clustername, server.Hostname)
+		if err != nil {
+			tempErr = err
+			logrus.Errorf("Delete Cluster %s failed, when delete node: %s  err is %v\n", clustername, server.Hostname, err)
+		}
+	}
 
-	//Notify Cluster Service if Delete User Cluster
+	if tempErr != nil {
+		return DEPLOY_ERROR_DELETE_CLUSTER, tempErr
+	}
 
 	return
 }
-func (p *DeployService) DeleteNode(x_auth_token string) (
+
+func (p *DeployService) DeleteNode(username, clustername string, servers []entity.Server) (
 	errorCode string, err error) {
-	logrus.Infof("start to Delete Docker Machine...")
-	//remove the ip from env file
+	logrus.Infof("start to Delete Docker Machine Nodes...")
+	//get the cluster name and user info to call docker machine to delete all the vms
+	var tempErr error
+	for _, server := range servers {
+		logrus.Infof("Update env file in docker compose service.")
+		err = GetDockerComposeService().Remove(username, clustername, server.Hostname)
+		if err != nil {
+			tempErr = err
+			logrus.Errorf("Remove node %s failed in docker compose, when delete node: %s  err is %v\n", clustername, server.Hostname, err)
+		}
 
-	//call docker machine to terminate the vm
+		logrus.Infof("Removing docker machine node, username: %s, clustername %s, hostname %s\n", username, clustername, server.Hostname)
+		err = GetDockerMachineService().DeleteMachine(username, clustername, server.Hostname)
+		if err != nil {
+			tempErr = err
+			logrus.Errorf("Delete node %s failed, when delete node: %s  err is %v\n", clustername, server.Hostname, err)
+		}
+	}
 
-	//notify the Cluster Service
+	if tempErr != nil {
+		return DEPLOY_ERROR_DELETE_NODE, tempErr
+	}
 
 	return
 }
 
-func (p *DeployService) CreateNode(x_auth_token string) (
-	errorCode string, err error) {
+func (p *DeployService) CreateNode(request entity.AddNodeRequest) (slaves []entity.Server, errorCode string, err error) {
 	logrus.Infof("start to Scale Docker Machine...")
 	//Call the Docker Machines to create machines and Replace PubKey File
+	requestIdLabel := entity.Label{Key: "requestId", Value: request.RequestId}
+	slaveLabel := entity.Label{Key: "slave", Value: "true"}
+	slavelabels := []entity.Label{}
+	slavelabels = append(slavelabels, slaveLabel)
+	slavelabels = append(slavelabels, requestIdLabel)
+	var tempErr error
+	for i := 0; i < request.CreateNumber; i++ {
+		server, _, err := GetDockerMachineService().Create(request.UserName, request.ClusterName, true, false, request.ConsulServer, request.ProviderInfo, slavelabels)
+		server.IsSlave = true
+		if err != nil {
+			tempErr = err
+			server = entity.Server{"", "", "", false, false, false, "", false, false, false}
+			logrus.Errorf("Create node %s failed in docker machine: %s  err is %v\n", request.ClusterName, server.Hostname, err)
+		}
+		slaves = append(slaves, server)
+	}
 
 	//Change the "/etc/hosts" and "/etc/resolve.conf" of server
 
 	//prepare ".env" file for new Node
+	err = GetDockerComposeService().Add(request.UserName, request.ClusterName, slaves, request.CreateNumber+request.ExistedNumber)
+	if err != nil {
+		logrus.Errorf("Create node %s failed in docker compose: err is %v\n", request.ClusterName, err)
+		return slaves, DEPLOY_ERROR_ADD_NODE_DOCKER_COMPOSE, err
+	}
 
-	//call docker-compose to deploy the slave Node
+	err = changeNameserver(slaves, request.DnsServers, GetDockerMachineService().ComposeStoragePath(request.UserName, request.ClusterName), false)
+	if err != nil {
+		logrus.Errorf("Create node %s failed in change dns config: err is %v\n", request.ClusterName, err)
+		return slaves, DEPLOY_ERROR_CHANGE_DNSCONFIG, err
+	}
 
-	//notify the Cluster Service
+	if tempErr != nil {
+		return slaves, DEPLOY_ERROR_ADD_NODE_DOCKER_MACHINE, tempErr
+	}
 
 	return
 }
