@@ -52,9 +52,7 @@ func (p *HostService) Create(host entity.Host, x_auth_token string) (newHost ent
 	}
 
 	// generate ObjectId
-	if !bson.IsObjectIdHex(host.ObjectId.Hex()) {
-		host.ObjectId = bson.NewObjectId()
-	}
+	host.ObjectId = bson.NewObjectId()
 
 	token, err := GetTokenById(x_auth_token)
 	if err != nil {
@@ -179,77 +177,6 @@ func (p *HostService) queryByQuery(query bson.M, skip int, limit int,
 	return
 }
 
-//terminate host
-func (p *HostService) TerminateHostById(hostId string, deleteMasterNode bool, x_auth_token string) (newHost *entity.Host, errorCode string, err error) {
-	logrus.Infof("start to delete host id %v", hostId)
-	// do authorize first
-	if authorized := GetAuthService().Authorize("delete_host", x_auth_token, hostId, p.collectionName); !authorized {
-		err = errors.New("required opertion is not authorized!")
-		errorCode = COMMON_ERROR_UNAUTHORIZED
-		logrus.Errorf("delete host with hostId [%v] error is %v", hostId, err)
-		return nil, errorCode, err
-	}
-	if !bson.IsObjectIdHex(hostId) {
-		err = errors.New("invalide ObjectId.")
-		errorCode = COMMON_ERROR_INVALIDATE
-		return nil, errorCode, err
-	}
-
-	//query host
-	selector := bson.M{}
-	selector["_id"] = bson.ObjectIdHex(hostId)
-	var host entity.Host
-	err = dao.HandleQueryOne(&host, dao.QueryStruct{p.collectionName, selector, 0, 0, ""})
-	if err != nil {
-		errorCode = HOST_ERROR_QUERY
-		return &host, errorCode, err
-	}
-
-	//master && dont delete
-	if host.IsMasterNode && !deleteMasterNode {
-		return &host, HOST_ERROR_DELETE_MASTER, errors.New("Cannot delete master node")
-	}
-
-	switch host.Status {
-	case HOST_STATUS_RUNNING:
-		//call API
-		host.Status = HOST_STATUS_TERMINATING
-	case HOST_STATUS_FAILED:
-		//call API
-		//set status TERMINATED
-		host.Status = HOST_STATUS_TERMINATING
-	case HOST_STATUS_TERMINATED:
-		//return err
-		errorCode = HOST_ERROR_DELETE
-		err = errors.New("Cannot operate on a TERMINATED host")
-		return &host, errorCode, err
-	case HOST_STATUS_DEPLOYING:
-		//return err
-		errorCode = HOST_ERROR_DELETE
-		err = errors.New("Cannot operate on a DEPLOYING host")
-		return &host, errorCode, err
-	case HOST_STATUS_TERMINATING:
-		//return err
-		errorCode = HOST_ERROR_DELETE
-		err = errors.New("Cannot operate on a TERMINATING host")
-		return &host, errorCode, err
-	default:
-		//return err
-		errorCode = HOST_ERROR_DELETE
-		err = errors.New("Unknown host status")
-		return &host, errorCode, err
-	}
-
-	//save change to db
-	err = dao.HandleUpdateByQueryPartial(p.collectionName, selector, host)
-	if err != nil {
-		logrus.Errorln("update host error is %v", err)
-		return &host, HOST_ERROR_UPDATE, err
-	}
-
-	return &host, errorCode, err
-}
-
 func (p *HostService) UpdateById(objectId string, host entity.Host, x_auth_token string) (created bool,
 	errorCode string, err error) {
 	logrus.Infof("start to update host [%v]", host)
@@ -284,4 +211,44 @@ func (p *HostService) UpdateById(objectId string, host entity.Host, x_auth_token
 	}
 	created = true
 	return
+}
+
+func (p *HostService) UpdateStatusById(objectId string, status string, x_auth_token string) (created bool,
+	errorCode string, err error) {
+	logrus.Infof("start to update host by objectId [%v] status to %v", objectId, status)
+	// do authorize first
+	if authorized := GetAuthService().Authorize("update_host", x_auth_token, objectId, p.collectionName); !authorized {
+		err = errors.New("required opertion is not authorized!")
+		errorCode = COMMON_ERROR_UNAUTHORIZED
+		logrus.Errorf("update host with objectId [%v] status to [%v] failed, error is %v", objectId, status, err)
+		return
+	}
+	// validate objectId
+	if !bson.IsObjectIdHex(objectId) {
+		err = errors.New("invalide ObjectId.")
+		errorCode = COMMON_ERROR_INVALIDATE
+		return
+	}
+	host, _, err := p.QueryById(objectId, x_auth_token)
+	if err != nil {
+		logrus.Errorf("get host by objeceId [%v] failed, error is %v", objectId, err)
+		return
+	}
+	if host.Status == status {
+		logrus.Infof("this host [%v] is already in state [%v]", host, status)
+		return false, "", nil
+	}
+	var selector = bson.M{}
+	selector["_id"] = bson.ObjectIdHex(objectId)
+
+	change := bson.M{"status": status, "time_update": dao.GetCurrentTime()}
+	err = dao.HandleUpdateByQueryPartial(p.collectionName, selector, change)
+	if err != nil {
+		logrus.Errorf("update host with objectId [%v] status to [%v] failed, error is %v", objectId, status, err)
+		created = false
+		return
+	}
+	created = true
+	return
+
 }

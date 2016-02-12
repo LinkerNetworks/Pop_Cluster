@@ -84,6 +84,8 @@ func main() {
 
 	// TODO: Check mongo flag, if mongo is set by flag, using mongo flag
 
+	fmt.Println("call deployment enabled:", Props.GetBool("call.deployment", false))
+
 	// New, shared session manager, seprate DAO layer
 	MongoAlias = Props.GetString("db.alias", "dev")
 	sessMng := session.NewSessionManager(Props.FilterPrefix("mongod."), MongoAlias)

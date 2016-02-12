@@ -5,12 +5,12 @@ type Server struct {
 	IpAddress        string `json:"ipAddress"`
 	PrivateIpAddress string `json:"privateIpAddress"`
 	IsMaster         bool   `json:"isMaster"`
-	IsSlave          bool   `json:"isMaster"`
+	IsSlave          bool   `json:"isSlave"`
 	IsSwarmMaster    bool   `json:"isSwarmMaster"`
 	StoragePath      string `json:"storagePath"`
-	IsConsul		 bool	`json:"isConsul"`
-	IsFullfilled	 bool	`json:"isFullfilled"`
-	IsDnsServer		 bool	`json:"isDnsServer"`
+	IsConsul         bool   `json:"isConsul"`
+	IsFullfilled     bool   `json:"isFullfilled"`
+	IsDnsServer      bool   `json:"isDnsServer"`
 }
 
 type Label struct {
@@ -105,7 +105,7 @@ type Request struct {
 	UserName      string       `json:"username"`
 	ClusterName   string       `json:"clusterName"`
 	RequestId     string       `json:"requestId"`
-	ClusterNumber int          `json:"clusterNubmer"`
+	ClusterNumber int          `json:"clusterNumber"`
 	IsLinkerMgmt  bool         `json:"isLinkerMgmt"`
 	ProviderInfo  ProviderInfo `json:"providerInfo"`
 }
@@ -116,15 +116,16 @@ type AddNodeRequest struct {
 	RequestId     string       `json:"requestId"`
 	CreateNumber  int          `json:"createNumber"`
 	ExistedNumber int          `json:"existedNumber"`
-	ConsulServer  string	   `json:"consulServer"`
+	ConsulServer  string       `json:"consulServer"`
 	ProviderInfo  ProviderInfo `json:"providerInfo"`
-	DnsServers	  []Server	   `json:"dnsServers"`	
+	DnsServers    []Server     `json:"dnsServers"`
+	SwarmMaster   string       `json:"swarmMaster"`
 }
 
 type DeleteRequest struct {
-	UserName      	string       	`json:"username"`
-	ClusterName   	string       	`json:"clusterName"`
-	Servers			[]Server		`json:"servers"`
+	UserName    string   `json:"username"`
+	ClusterName string   `json:"clusterName"`
+	Servers     []Server `json:"servers"`
 }
 
 type ProviderInfo struct {
@@ -139,23 +140,23 @@ type Provider struct {
 }
 
 type Openstack struct {
-	AuthUrl       string `json:"authUrl"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	TenantName    string `json:"tenantName"`
-	FlavorName    string `json:"flavorName"`
-	ImageName     string `json:"imageName"`
-	SecurityGroup string `json:"securityGroup"`
-	IpPoolName    string `json:"ipPoolName"`
-	NovaNetwork   string `json:"novaNetwork"`
+	AuthUrl       string `bson:"authUrl" json:"authUrl"`
+	Username      string `bson:"username" json:"username"`
+	Password      string `bson:"password" json:"password"`
+	TenantName    string `bson:"tenantName" json:"tenantName"`
+	FlavorName    string `bson:"flavorName" json:"flavorName"`
+	ImageName     string `bson:"imageName" json:"imageName"`
+	SecurityGroup string `bson:"securityGroup" json:"securityGroup"`
+	IpPoolName    string `bson:"ipPoolName" json:"ipPoolName"`
+	NovaNetwork   string `bson:"novaNetwork" json:"novaNetwork"`
 }
 
 type AwsEC2 struct {
-	AccessKey    string `json:"accesskeys"`
-	SecretKey    string `json:"secretKey"`
-	ImageId      string `json:"imageId"`
-	InstanceType string `json:"instanceType"`
-	RootSize     string `json:"rootSize"`
-	Region       string `json:"region"`
-	VpcId        string `json:"vpcId"`
+	AccessKey    string `bson:"accesskeys" json:"accesskeys"`
+	SecretKey    string `bson:"secretKey" json:"secretKey"`
+	ImageId      string `bson:"imageId" json:"imageId"`
+	InstanceType string `bson:"instanceType" json:"instanceType"`
+	RootSize     string `bson:"rootSize" json:"rootSize"`
+	Region       string `bson:"region" json:"region"`
+	VpcId        string `bson:"vpcId" json:"vpcId"`
 }

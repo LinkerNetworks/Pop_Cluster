@@ -125,17 +125,14 @@ func (p *Resource) AddNodesHandler(req *restful.Request, resp *restful.Response)
 
 	servers, code, err := services.GetDeployService().CreateNode(request)
 
-	var flag bool
 	var res response.Response
 	if err != nil {
-		flag = false
-		errObj := response.Error {Code: code, ErrorMsg: fmt.Sprintf("%v", err)}
-		res = response.Response{Success: flag, Error: &errObj, Data: servers}
+		errObj := response.Error{Code: code, ErrorMsg: fmt.Sprintf("%v", err)}
+		res = response.Response{Success: true, Error: &errObj, Data: servers}
 	} else {
-		flag = true
-		res = response.Response{Success: flag, Data: servers}
+		res = response.Response{Success: true, Data: servers}
 	}
-	
+
 	resp.WriteEntity(res)
 	return
 }
@@ -148,7 +145,7 @@ func (p *Resource) DeleteNodesHandler(req *restful.Request, resp *restful.Respon
 
 	// Populate the user data
 	err := json.NewDecoder(req.Request.Body).Decode(&request)
-	
+
 	logrus.Infof("Username is %v", request.UserName)
 	logrus.Infof("Cluster is %v", request.ClusterName)
 	logrus.Infof("Servers is %v", request.Servers)
@@ -159,13 +156,9 @@ func (p *Resource) DeleteNodesHandler(req *restful.Request, resp *restful.Respon
 		return
 	}
 
-	code, err := services.GetDeployService().DeleteNode(request.UserName, request.ClusterName, request.Servers)
-	if err != nil {
-		response.WriteStatusError(code, err, resp)
-		return
-	}
+	slaves, _, _ := services.GetDeployService().DeleteNode(request.UserName, request.ClusterName, request.Servers)
+	res := response.Response{Success: true, Data: slaves}
 
-	res := response.Response{Success: true}
 	resp.WriteEntity(res)
 	return
 }

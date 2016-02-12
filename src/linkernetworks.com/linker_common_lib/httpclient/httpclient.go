@@ -45,6 +45,7 @@ func Http_post(url string, body string, headers ...Header) (resp *http.Response,
 	for _, header := range headers {
 		req.Header.Set(header.Key, header.Value)
 	}
+
 	// req.Header.Set("Content-Type", contenttype)
 	resp, err = client.Do(req)
 	return

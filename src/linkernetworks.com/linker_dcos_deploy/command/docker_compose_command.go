@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"github.com/Sirupsen/logrus"
 	"io"
+	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func clusterCompose(userName, clusterName, swarmName, storagePath string, scale int) (output, errput string, err error) {
@@ -59,10 +61,53 @@ func InstallCluster(userName, clusterName, swarmName, storagePath string, master
 	return nil
 }
 
-// addNode node=publicIp: "hostname1=10.10.10.1" or null
-// deleteNode node=publicIp: "hostname2=10.10.10.2" or null
+// addNode node=publicIp: "hostname1=10.10.10.1"
 // scale mesosslave
-func RedeployCluster(userName string, clusterName string, addNode string, deleteNode string, scale int) error {
+func AddSlaveToCluster(userName, clusterName, swarmName, storagePath string, addNodes []string, scale int) error {
+	envFile, err := createOrGetEnvFile(userName, clusterName)
+
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	defer envFile.Close()
+
+	for _, tmpStr := range addNodes {
+		envFile.WriteString(tmpStr + "\n")
+	}
+
+	_, tmpErr, err := clusterCompose(userName, clusterName, swarmName, storagePath, scale)
+	if err != nil {
+		logrus.Infof(tmpErr)
+		return err
+	}
+
+	return nil
+}
+
+// deleteNode node=publicIp: "hostname2"
+func RemoveSlaveFromCluster(userName, clusterName, deleteNode string) error {
+	envFile, err := createOrGetEnvFile(userName, clusterName)
+
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	defer envFile.Close()
+
+	content, err := ioutil.ReadFile(envFile.Name())
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(content), "\n")
+
+	envFile.Truncate(0)
+	for _, line := range lines {
+		if strings.HasPrefix(line, deleteNode+"=") == false {
+			envFile.WriteString(line)
+		}
+	}
+
 	return nil
 }
 

@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/ioutil"
-//	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,6 +53,11 @@ func HashString(password string) string {
 	return hex.EncodeToString(encry[:])
 }
 
+func IsUserNameValid(name string) bool {
+	reg := regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,255}$`)
+	return reg.MatchString(name)
+}
+
 func GetWaitTime(execTime time.Time) int64 {
 	one_day := 24 * 60 * 60
 	currenTime := time.Now()
@@ -81,20 +86,16 @@ func GenerateExpireTime(expire int64) float64 {
 
 func GetClusterByUser(userid string, x_auth_token string) (cluster []entity.Cluster, err error) {
 	clusterurl := common.UTIL.Props.GetString("nodebanlancer.url","")
-	url := strings.Join([]string{"http://", clusterurl, ":10002","/v1/cluster?user_id=", userid}, "")
+	url := strings.Join([]string{"http://", clusterurl, ":10002","/v1/cluster?user_id=", userid,"&status=unterminated"}, "")
 	logrus.Debugln("get cluster url=" + url)
 
 	resp, err := httpclient.Http_get(url, "",
 		httpclient.Header{"Content-Type", "application/json"}, httpclient.Header{"X-Auth-Token", x_auth_token})
-	if resp == nil {
-		return nil, errors.New("Nil pointer")
-	}
-	defer resp.Body.Close()
 	if err != nil {
 		logrus.Errorf("http get cluster error %v", err)
 		return nil, err
 	}
-
+	defer resp.Body.Close()
 	data, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		logrus.Errorf("get cluster by username failed %v", string(data))

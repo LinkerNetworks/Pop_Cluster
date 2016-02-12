@@ -20,14 +20,21 @@ const (
 	CLUSTER_STATUS_FAILED      = "FAILED"
 	CLUSTER_STATUS_TERMINATING = "TERMINATING"
 
-	CLUSTER_ERROR_CREATE string = "E50000"
-	CLUSTER_ERROR_UPDATE string = "E50001"
-	CLUSTER_ERROR_DELETE string = "E50002"
-	CLUSTER_ERROR_UNIQUE string = "E50003"
-	CLUSTER_ERROR_QUERY  string = "E50004"
+	CLUSTER_ERROR_CREATE     string = "E50000"
+	CLUSTER_ERROR_UPDATE     string = "E50001"
+	CLUSTER_ERROR_DELETE     string = "E50002"
+	CLUSTER_ERROR_NAME_EXIST string = "E50003"
+	CLUSTER_ERROR_QUERY      string = "E50004"
 
-	CLUSTER_ERROR_PARSE_NUMBER       string = "E50010"
-	CLUSTER_ERROR_NO_SUCH_MANY_NODES string = "E50011"
+	CLUSTER_ERROR_INVALID_NUMBER     string = "E50010"
+	CLUSTER_ERROR_INVALID_NAME       string = "E50011"
+	CLUSTER_ERROR_INVALID_TYPE       string = "E50012"
+	CLUSTER_ERROR_CALL_USERMGMT      string = "E50013"
+	CLUSTER_ERROR_CALL_DEPLOYMENT    string = "E50014"
+	CLUSTER_ERROR_CALL_MONGODB       string = "E50015"
+	CLUSTER_ERROR_INVALID_STATUS     string = "E50016"
+	CLUSTER_ERROR_DELETE_NOT_ALLOWED string = "E50017"
+	CLUSTER_ERROR_DELETE_NODE_NUM    string = "E50018"
 )
 
 var (
@@ -48,6 +55,58 @@ func GetClusterService() *ClusterService {
 
 }
 
+func (p *ClusterService) CheckClusterName(userId string, clusterName string, x_auth_token string) (errorCode string, err error) {
+	logrus.Infof("checking clustername [%s] for user with id [%s]", clusterName, userId)
+
+	// authorization
+	if authorized := GetAuthService().Authorize("list_cluster", x_auth_token, "", p.collectionName); !authorized {
+		err = errors.New("required opertion is not authorized!")
+		errorCode = COMMON_ERROR_UNAUTHORIZED
+		logrus.Errorf("check cluster name auth failure [%v]", err)
+		return
+	}
+
+	// if !IsClusterNameValid(clusterName) {
+	// 	logrus.Errorf("clustername [%s] do not match with regex\n", clusterName)
+	// 	return CLUSTER_ERROR_INVALID_NAME, errors.New("Invalid clustername,does not match with regex")
+	// }
+
+	//check userId(must be a objectId at least)
+	if !bson.IsObjectIdHex(userId) {
+		logrus.Errorf("invalid userid [%s],not a object id\n", clusterName)
+		return COMMON_ERROR_INVALIDATE, errors.New("Invalid userid,not a object id")
+	}
+
+	ok, errorCode, err := p.isClusterNameUnique(userId, clusterName)
+	if err != nil {
+		return errorCode, err
+	}
+	if !ok {
+		logrus.Errorf("clustername [%s] already exist for user with id [%s]\n", clusterName, userId)
+		return CLUSTER_ERROR_NAME_EXIST, errors.New("Invalid clustername,conflict")
+	}
+	return
+}
+
+//check if name of a user's clusters is conflict
+func (p *ClusterService) isClusterNameUnique(userId string, clusterName string) (ok bool, errorCode string, err error) {
+	//check cluster name
+	//name of someone's unterminated clusters should be unique
+	query := bson.M{}
+	query["status"] = bson.M{"$ne": CLUSTER_STATUS_TERMINATED}
+	query["user_id"] = userId
+	query["name"] = clusterName
+	n, _, errorCode, err := p.queryByQuery(query, 0, 0, "", "", true)
+	if err != nil {
+		return false, errorCode, err
+	}
+	if n > 0 {
+		//name already exist
+		return false, "", nil
+	}
+	return true, "", nil
+}
+
 func (p *ClusterService) Create(cluster entity.Cluster, x_auth_token string) (newCluster *entity.Cluster,
 	errorCode string, err error) {
 	logrus.Infof("start to create cluster [%v]", cluster)
@@ -62,12 +121,28 @@ func (p *ClusterService) Create(cluster entity.Cluster, x_auth_token string) (ne
 
 	//check cluster name
 	if !IsClusterNameValid(cluster.Name) {
-		return nil, CLUSTER_ERROR_CREATE, errors.New("Invalid cluster name.")
+		return nil, CLUSTER_ERROR_INVALID_NAME, errors.New("Invalid cluster name.")
+	}
+
+	//check userId(must be a objectId at least)
+	if !bson.IsObjectIdHex(cluster.UserId) {
+		logrus.Errorf("invalid userid [%s],not a object id\n", cluster.Name)
+		return nil, COMMON_ERROR_INVALIDATE, errors.New("Invalid userid,not a object id")
+	}
+
+	//check if cluster name is unique
+	ok, errorCode, err := p.isClusterNameUnique(cluster.UserId, cluster.Name)
+	if err != nil {
+		return nil, errorCode, err
+	}
+	if !ok {
+		logrus.Errorf("clustername [%s] already exist for user with id [%s]\n", cluster.Name, cluster.UserId)
+		return nil, CLUSTER_ERROR_NAME_EXIST, errors.New("Conflict clustername")
 	}
 
 	//check instances count
 	if cluster.Instances < 5 {
-		return nil, CLUSTER_ERROR_CREATE, errors.New("Invalid cluster instances, 5 at least")
+		return nil, CLUSTER_ERROR_INVALID_NUMBER, errors.New("Invalid cluster instances, 5 at least")
 	}
 
 	//set cluster type to default
@@ -79,7 +154,7 @@ func (p *ClusterService) Create(cluster entity.Cluster, x_auth_token string) (ne
 	} else if cluster.Type == "mgmt" {
 		return p.CreateMgmtCluster(cluster, x_auth_token)
 	} else {
-		return nil, CLUSTER_ERROR_CREATE, errors.New("unsupport cluster type, user|mgmt expected")
+		return nil, CLUSTER_ERROR_INVALID_TYPE, errors.New("unsupport cluster type, user|mgmt expected")
 	}
 
 }
@@ -87,32 +162,13 @@ func (p *ClusterService) Create(cluster entity.Cluster, x_auth_token string) (ne
 func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token string) (newCluster *entity.Cluster,
 	errorCode string, err error) {
 
-	//check cluster name
-	//name of someone's unterminated clusters should be unique
-	query := bson.M{}
-	query["status"] = bson.M{"$ne": CLUSTER_STATUS_TERMINATED}
-	query["user_id"] = cluster.UserId
-	query["name"] = cluster.Name
-	n, _, errorCode, err := p.queryByQuery(query, 0, 0, "", x_auth_token, false)
-	if err != nil {
-		logrus.Errorf("query unterminated clusters, error is %v", err)
-		return nil, errorCode, err
-	}
-	if n > 0 {
-		//name already exist
-		err = errors.New("the name of cluster must be unique!")
-		errorCode = CLUSTER_ERROR_UNIQUE
-		logrus.Errorf("create cluster [%v] error is %v", cluster, err)
-		return
-	}
-
 	// generate ObjectId
 	cluster.ObjectId = bson.NewObjectId()
 
 	userId := cluster.UserId
 	if len(userId) == 0 {
 		err = errors.New("user_id not provided")
-		errorCode = CLUSTER_ERROR_CREATE
+		errorCode = COMMON_ERROR_INVALIDATE
 		logrus.Errorf("create cluster [%v] error is %v", cluster, err)
 		return
 	}
@@ -120,7 +176,7 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 	user, err := GetUserById(userId, x_auth_token)
 	if err != nil {
 		logrus.Errorf("get user by id err is %v", err)
-		errorCode = CLUSTER_ERROR_CREATE
+		errorCode = CLUSTER_ERROR_CALL_USERMGMT
 		return nil, errorCode, err
 	}
 	cluster.TenantId = user.TenantId
@@ -133,7 +189,7 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 	// insert bson to mongodb
 	err = dao.HandleInsert(p.collectionName, cluster)
 	if err != nil {
-		errorCode = CLUSTER_ERROR_CREATE
+		errorCode = CLUSTER_ERROR_CALL_MONGODB
 		logrus.Errorf("create cluster [%v] to bson error is %v", cluster, err)
 		return
 	}
@@ -148,12 +204,18 @@ func (p *ClusterService) CreateUserCluster(cluster entity.Cluster, x_auth_token 
 		host.TimeCreate = dao.GetCurrentTime()
 		host.TimeUpdate = host.TimeCreate
 
-		GetHostService().Create(host, x_auth_token)
+		_, _, err := GetHostService().Create(host, x_auth_token)
+		if err != nil {
+			logrus.Errorf("insert host to db error is [%v]", err)
+		}
 	}
 
-	//call deployment
-	go CreateCluster(cluster, x_auth_token)
+	if IsDeploymentEnabled() {
+		//call deployment
+		go CreateCluster(cluster, x_auth_token)
+	}
 
+	newCluster = &cluster
 	return
 }
 
@@ -165,7 +227,7 @@ func (p *ClusterService) CreateMgmtCluster(cluster entity.Cluster, x_auth_token 
 	query["type"] = "mgmt"
 	n, _, _, err := p.queryByQuery(query, 0, 0, "", x_auth_token, false)
 	if n > 0 {
-		return nil, CLUSTER_ERROR_CREATE, errors.New("mgmt cluster already exist")
+		return nil, CLUSTER_ERROR_CALL_MONGODB, errors.New("mgmt cluster already exist")
 	}
 
 	if cluster.Name == "" {
@@ -174,7 +236,7 @@ func (p *ClusterService) CreateMgmtCluster(cluster entity.Cluster, x_auth_token 
 	token, err := GetTokenById(x_auth_token)
 	if err != nil {
 		logrus.Errorf("get token by id error is %v", err)
-		errorCode = CLUSTER_ERROR_CREATE
+		errorCode = CLUSTER_ERROR_CALL_USERMGMT
 		return nil, errorCode, err
 	}
 	if cluster.UserId == "" {
@@ -194,7 +256,7 @@ func (p *ClusterService) CreateMgmtCluster(cluster entity.Cluster, x_auth_token 
 	// insert bson to mongodb
 	err = dao.HandleInsert(p.collectionName, cluster)
 	if err != nil {
-		errorCode = CLUSTER_ERROR_CREATE
+		errorCode = CLUSTER_ERROR_CALL_MONGODB
 		logrus.Errorf("create cluster [%v] to bson error is %v", cluster, err)
 		return
 	}
@@ -208,8 +270,13 @@ func (p *ClusterService) CreateMgmtCluster(cluster entity.Cluster, x_auth_token 
 		host.TimeCreate = dao.GetCurrentTime()
 		host.TimeUpdate = host.TimeCreate
 
-		go GetHostService().Create(host, x_auth_token)
+		_, _, err := GetHostService().Create(host, x_auth_token)
+		if err != nil {
+			logrus.Errorf("insert host to db error is [%v]", err)
+		}
 	}
+
+	newCluster = &cluster
 
 	return
 }
@@ -239,7 +306,7 @@ func (p *ClusterService) QueryCluster(name string, userId string, status string,
 		status == CLUSTER_STATUS_TERMINATING {
 		query["status"] = status
 	} else {
-		errorCode = CLUSTER_ERROR_QUERY
+		errorCode = COMMON_ERROR_INVALIDATE
 		err := errors.New("Invalid parameter status")
 		return 0, nil, errorCode, err
 	}
@@ -274,6 +341,7 @@ func (p *ClusterService) queryByQuery(query bson.M, skip int, limit int, sort st
 	if err != nil {
 		logrus.Errorf("query clusters by query [%v] error is %v", query, err)
 		errorCode = CLUSTER_ERROR_QUERY
+		return
 	}
 	return
 }
@@ -289,14 +357,14 @@ func generateQueryWithAuth(oriQuery bson.M, authQuery bson.M) (query bson.M) {
 	return
 }
 
-func (p *ClusterService) UpdateStateById(objectId string, newState string, x_auth_token string) (created bool,
+func (p *ClusterService) UpdateStatusById(objectId string, status string, x_auth_token string) (created bool,
 	errorCode string, err error) {
-	logrus.Infof("start to update cluster by objectId [%v] status to %v", objectId, newState)
+	logrus.Infof("start to update cluster by objectId [%v] status to %v", objectId, status)
 	// do authorize first
 	if authorized := GetAuthService().Authorize("update_cluster", x_auth_token, objectId, p.collectionName); !authorized {
 		err = errors.New("required opertion is not authorized!")
 		errorCode = COMMON_ERROR_UNAUTHORIZED
-		logrus.Errorf("update cluster with objectId [%v] status to [%v] failed, error is %v", objectId, newState, err)
+		logrus.Errorf("update cluster with objectId [%v] status to [%v] failed, error is %v", objectId, status, err)
 		return
 	}
 	// validate objectId
@@ -310,21 +378,34 @@ func (p *ClusterService) UpdateStateById(objectId string, newState string, x_aut
 		logrus.Errorf("get cluster by objeceId [%v] failed, error is %v", objectId, err)
 		return
 	}
-	if cluster.Status == newState {
-		logrus.Infof("this cluster [%v] is already in state [%v]", cluster, newState)
+	if cluster.Status == status {
+		logrus.Infof("this cluster [%v] is already in state [%v]", cluster, status)
 		return false, "", nil
 	}
 	var selector = bson.M{}
 	selector["_id"] = bson.ObjectIdHex(objectId)
 
-	change := bson.M{"status": newState, "time_update": dao.GetCurrentTime()}
+	change := bson.M{"status": status, "time_update": dao.GetCurrentTime()}
 	err = dao.HandleUpdateByQueryPartial(p.collectionName, selector, change)
 	if err != nil {
-		logrus.Errorf("update cluster with objectId [%v] status to [%v] failed, error is %v", objectId, newState, err)
+		logrus.Errorf("update cluster with objectId [%v] status to [%v] failed, error is %v", objectId, status, err)
 	}
 	created = true
 	return
 
+}
+
+//update cluster in db
+func (p *ClusterService) UpdateCluster(cluster entity.Cluster, x_auth_token string) (created bool,
+	errorCode string, err error) {
+	query := bson.M{}
+	query["_id"] = cluster.ObjectId
+	created, err = dao.HandleUpdateOne(cluster, dao.QueryStruct{p.collectionName, query, 0, 0, ""})
+	if err != nil {
+		errorCode = CLUSTER_ERROR_UPDATE
+		return
+	}
+	return
 }
 
 func (p *ClusterService) QueryById(objectId string, x_auth_token string) (cluster entity.Cluster,
@@ -355,13 +436,14 @@ func (p *ClusterService) QueryById(objectId string, x_auth_token string) (cluste
 
 }
 
+//delete someone's clusters
 func (p *ClusterService) DeleteByUserId(userId string, token string) (errorCode string, err error) {
 	logrus.Infof("start to delete Cluster with userid [%v]", userId)
 
 	if len(userId) == 0 {
-		error_code := CLUSTER_ERROR_DELETE
+		errorCode := COMMON_ERROR_INVALIDATE
 		err = errors.New("Invalid parameter userid")
-		return error_code, err
+		return errorCode, err
 	}
 
 	selector, err := GetAuthService().BuildQueryByAuth("delete_clusters", token)
@@ -377,7 +459,7 @@ func (p *ClusterService) DeleteByUserId(userId string, token string) (errorCode 
 	_, err = dao.HandleQueryAll(&clusters, dao.QueryStruct{p.collectionName, selector, 0, 0, ""})
 	if err != nil {
 		logrus.Errorf("get all cluster by userId error %v", err)
-		errorCode = CLUSTER_ERROR_UPDATE
+		errorCode = CLUSTER_ERROR_QUERY
 		return
 	}
 
@@ -400,6 +482,7 @@ func (p *ClusterService) DeleteClusters(clusterIds []string, x_auth_token string
 
 	for i, clusterId := range clusterIds {
 		logrus.Infof("deleting clusters %d of %d", (i + 1), total)
+		//call delete cluster
 		errorCode, err = p.DeleteById(clusterId, x_auth_token)
 		if err != nil {
 			logrus.Errorf("delete cluster error is %v", err)
@@ -424,89 +507,92 @@ func (p *ClusterService) DeleteById(clusterId string, x_auth_token string) (erro
 		err = errors.New("required opertion is not authorized!")
 		errorCode = COMMON_ERROR_UNAUTHORIZED
 		logrus.Errorf("authorize failure when deleting cluster with id [%v] , error is %v", clusterId, err)
-		return
+		return errorCode, err
 	}
 	if !bson.IsObjectIdHex(clusterId) {
 		err = errors.New("Invalid cluster id.")
 		errorCode = COMMON_ERROR_INVALIDATE
-		return
+		return errorCode, err
 	}
 
 	//query cluster
 	cluster, errorCode, err := p.QueryById(clusterId, x_auth_token)
 	if err != nil {
 		logrus.Errorf("query cluster error is %v", err)
-		return
+		return errorCode, err
 	}
 
 	//check status
 	switch cluster.Status {
 	case CLUSTER_STATUS_DEPLOYING, CLUSTER_STATUS_TERMINATING, CLUSTER_STATUS_TERMINATED:
 		logrus.Errorf("Cannot operate on a %s cluster", cluster.Status)
-		return CLUSTER_ERROR_DELETE, errors.New("Cannot operate on a " + cluster.Status + "cluster")
-	case CLUSTER_STATUS_FAILED:
-		//set cluster status TERMINATING
-		_, _, err = p.UpdateStateById(clusterId, CLUSTER_STATUS_TERMINATED, x_auth_token)
+		return CLUSTER_ERROR_INVALID_STATUS, errors.New("Cannot operate on a " + cluster.Status + " cluster")
+
+	case CLUSTER_STATUS_RUNNING, CLUSTER_STATUS_FAILED:
+		//query all hosts
+		var total int
+		total, hosts, errorCode, err := GetHostService().QueryHosts(clusterId, 0, 0, "unterminated", x_auth_token)
 		if err != nil {
-			logrus.Errorf("update cluster [objectId=%v] status error is %v", clusterId, err)
-			return CLUSTER_ERROR_DELETE, err
+			logrus.Errorf("query hosts in cluster %s error is %v", clusterId, err)
+			return errorCode, err
 		}
-	case CLUSTER_STATUS_RUNNING:
-		//terminate the cluster
-		return func(clusterId string, x_auth_token string) (errorCode string, err error) {
-			//set cluster status TERMINATING
-			_, _, err = p.UpdateStateById(clusterId, CLUSTER_STATUS_TERMINATING, x_auth_token)
-			if err != nil {
-				logrus.Errorf("update cluster [objectId=%v] status error is %v", clusterId, err)
-				return CLUSTER_ERROR_DELETE, err
-			}
 
-			//query all hosts
-			var total int
-			total, hosts, errorCode, err := GetHostService().QueryAllByClusterId(clusterId, 0, 0, x_auth_token)
-			if err != nil {
-				logrus.Errorf("query hosts in cluster %s error is %v", clusterId, err)
-				return HOST_ERROR_QUERY, err
-			}
+		successNode := 0
+		directDeletedHosts := 0
+		//set status of all hosts TERMINATING
+		for _, host := range hosts {
 
-			//terminate all hosts
-			ok_count := total
-			for _, host := range hosts {
-				//delete master node now
-				_, _, err = GetHostService().TerminateHostById(host.ObjectId.Hex(), true, x_auth_token)
+			//no host name means current host has not been created by docker-machine
+			if len(strings.TrimSpace(host.HostName)) <= 0 {
+				hostId := host.ObjectId.Hex()
+				logrus.Warnf("cluster[%s] host [%s] has no hostname, will be terminated directly", cluster.Name, hostId)
+				_, _, err := GetHostService().UpdateStatusById(hostId, HOST_STATUS_TERMINATED, x_auth_token)
 				if err != nil {
-					logrus.Errorf("delete host [objectId=%v] error is %v", host.ObjectId.Hex(), err)
-					errorCode = HOST_ERROR_DELETE
-					ok_count--
+					logrus.Warnf("set no hostname host status to termianted error %v", err)
 				}
+
+				directDeletedHosts++
 				continue
 			}
 
-			logrus.Infof("Cluster %s has %d hosts, %d successfully terminated", clusterId, total, ok_count)
-
-			if ok_count < total {
-				//FAILED
-				_, _, err = p.UpdateStateById(clusterId, CLUSTER_STATUS_FAILED, x_auth_token)
-				if err != nil {
-					logrus.Errorf("update cluster [objectId=%v] status error is %v", clusterId, err)
-					return CLUSTER_ERROR_DELETE, err
-				}
-
-				logrus.Errorf("delete cluster failure because %d hosts terminate failed", total-ok_count)
-				return CLUSTER_ERROR_DELETE, errors.New("not all hosts terminated")
+			//deploying and terminating host is not allowed to be terminated
+			if host.Status == HOST_STATUS_DEPLOYING || host.Status == HOST_STATUS_TERMINATING {
+				logrus.Errorf("status of host [%v] is [%s], cluster can not be deleted!", host.HostName, host.Status)
+				return CLUSTER_ERROR_DELETE_NOT_ALLOWED, errors.New("cannot delete cluster because not all nodes are ready")
 			}
 
-			//TERMINATED
-			_, _, err = p.UpdateStateById(clusterId, CLUSTER_STATUS_TERMINATED, x_auth_token)
+			//set host status to termianting
+			_, _, err = GetHostService().UpdateStatusById(host.ObjectId.Hex(), HOST_STATUS_TERMINATING, x_auth_token)
 			if err != nil {
-				logrus.Errorf("delete cluster [objectId=%v] error is %v", clusterId, err)
-				return CLUSTER_ERROR_DELETE, err
+				logrus.Warnf("delete host [objectId=%v] error is %v", host.ObjectId.Hex(), err)
+			} else {
+				successNode++
 			}
-			return
-		}(clusterId, x_auth_token)
+		}
+
+		logrus.Infof("Cluster %s has %d hosts, %d successfully terminating", cluster.Name, total, successNode)
+
+		selector := bson.M{}
+		selector["_id"] = cluster.ObjectId
+		change := bson.M{"status": CLUSTER_STATUS_TERMINATING, "time_update": dao.GetCurrentTime()}
+		if directDeletedHosts > 0 {
+			logrus.Infof("update cluster instances - %d", directDeletedHosts)
+			newvalue := cluster.Instances - directDeletedHosts
+			change["instances"] = newvalue
+		}
+		logrus.Debugf("update cluster status and instance bson[%v]", change)
+		erro := dao.HandleUpdateByQueryPartial(p.collectionName, selector, change)
+		if erro != nil {
+			logrus.Errorf("update cluster with objectId [%v] failed, error is %v", clusterId, erro)
+		}
+
+		if IsDeploymentEnabled() {
+			//call deployment module API
+			go DeleteCluster(cluster, x_auth_token)
+		}
 	default:
 		logrus.Errorf("Unknown cluster status %s", cluster.Status)
-		return CLUSTER_ERROR_DELETE, errors.New("Unknown cluster status " + cluster.Status)
+		return CLUSTER_ERROR_INVALID_STATUS, errors.New("Unknown cluster status " + cluster.Status)
 	}
 
 	return
@@ -536,51 +622,43 @@ func (p *ClusterService) AddHosts(clusterId, numberStr string, x_auth_token stri
 	if err != nil {
 		logrus.Errorf("query cluster [objectId=%v] error is %v", clusterId, err)
 		errorCode = CLUSTER_ERROR_QUERY
+		return
 	}
 
 	number, err := strconv.ParseInt(numberStr, 10, 0)
 	if err != nil {
 		logrus.Errorf("Parse number [objectId=%v] error is %v", numberStr, err)
-		errorCode = CLUSTER_ERROR_PARSE_NUMBER
+		errorCode = CLUSTER_ERROR_INVALID_NUMBER
+		return
 	}
 
 	if number <= 0 {
 		//call terminate hosts to do this
-		error_code := CLUSTER_ERROR_UPDATE
+		errorCode := CLUSTER_ERROR_INVALID_NUMBER
 		err = errors.New("Invalid number, it should be positive")
-		return cluster, error_code, err
+		return cluster, errorCode, err
 	}
 
-	//create hosts
-	var ok_count int = int(number)
+	newHosts := []entity.Host{}
 	for i := 0; i < int(number); i++ {
 		host := entity.Host{}
 		host.ClusterId = clusterId
 		host.ClusterName = cluster.Name
 		host.Status = HOST_STATUS_DEPLOYING
-		_, _, err := GetHostService().Create(host, x_auth_token)
+		//insert info to db
+		newHost, _, err := GetHostService().Create(host, x_auth_token)
+		newHosts = append(newHosts, newHost)
 		if err != nil {
 			logrus.Errorf("creat host error is %v", err)
-			ok_count--
 		}
 	}
 
-	if ok_count < int(number) {
-		logrus.Errorf("not all hosts successfully created. %d of %d", ok_count, number)
-	}
-
-	//set instances in cluster
-	cluster.Instances = cluster.Instances + int(ok_count)
-	change := bson.M{"instances": cluster.Instances, "time_update": dao.GetCurrentTime()}
-	err = dao.HandleUpdateByQueryPartial(p.collectionName, selector, change)
-	if err != nil {
-		logrus.Errorf("update cluster's [%v] instances to [%v] failed, error is %v", clusterId, cluster.Instances, err)
-		errorCode = CLUSTER_ERROR_UPDATE
-		return
+	if IsDeploymentEnabled() {
+		//call deployment module to add nodes
+		go AddNodes(cluster, int(number), newHosts, x_auth_token)
 	}
 
 	return
-
 }
 
 //terminate specified hosts of a cluster
@@ -594,7 +672,7 @@ func (p *ClusterService) TerminateHosts(clusterId string, hostIds []string, x_au
 	}
 
 	if len(hostIds) == 0 {
-		errorCode = HOST_ERROR_DELETE
+		errorCode = COMMON_ERROR_INVALIDATE
 		err = errors.New("Empty array of host id")
 		return errorCode, err
 	}
@@ -605,26 +683,92 @@ func (p *ClusterService) TerminateHosts(clusterId string, hostIds []string, x_au
 	clusterSelector["_id"] = bson.ObjectIdHex(clusterId)
 	err = dao.HandleQueryOne(&cluster, dao.QueryStruct{p.collectionName, clusterSelector, 0, 0, ""})
 
-	instances := cluster.Instances
+	_, currentHosts, errorCode, err := GetHostService().QueryHosts(clusterId, 0, 0, HOST_STATUS_RUNNING, x_auth_token)
+	if err != nil {
+		logrus.Errorf("get host by clusterId[%v] error [%v]", clusterId, err)
+		return errorCode, err
+	}
 
+	if !deletable(currentHosts, hostIds) {
+		logrus.Errorf("cluster's running node should not less than 5 nodes!")
+		return CLUSTER_ERROR_DELETE_NODE_NUM, errors.New("cluster's running node should not less than 5 nodes!")
+	}
+
+	hosts := []entity.Host{}
+	originStatus := make(map[string]string)
+	directDeletedHosts := 0
 	for _, hostId := range hostIds {
+		//query host
+		host, errorCode, err := GetHostService().QueryById(hostId, x_auth_token)
+		if err != nil {
+			return errorCode, err
+		}
+
+		//no host name means current host has not been created by docker-machine
+		if len(strings.TrimSpace(host.HostName)) <= 0 {
+			logrus.Warnf("host has no hostname, will be terminated directly, hostid: %s", hostId)
+			_, _, err := GetHostService().UpdateStatusById(hostId, HOST_STATUS_TERMINATED, x_auth_token)
+			if err != nil {
+				logrus.Warnf("set no hostname host[%s] status to termianted error %v", hostId, err)
+			}
+			directDeletedHosts++
+			continue
+		}
+
+		hosts = append(hosts, host)
+
+		//protect master node
+		if host.IsMasterNode {
+			return HOST_ERROR_DELETE_MASTER, errors.New("Cannot delete master node")
+		}
+
+		originStatus[host.ObjectId.Hex()] = host.Status
 		//call API to terminate host(master node cannot be deleted now)
-		_, errorCode, err := GetHostService().TerminateHostById(hostId, false, x_auth_token)
+		_, errorCode, err = GetHostService().UpdateStatusById(hostId, HOST_STATUS_TERMINATING, x_auth_token)
 		if err != nil {
 			logrus.Errorf("terminate host error is %s,%v", errorCode, err)
 			continue
 		}
-		//decline the host count only when DeleteById() run success
-		instances--
 	}
 
-	//update hosts count
-	cluster.Instances = instances
-	created, err := dao.HandleUpdateOne(&cluster, dao.QueryStruct{p.collectionName, clusterSelector, 0, 0, ""})
-	if !created {
-		logrus.Errorln("update cluster error is %v", err)
-		return CLUSTER_ERROR_UPDATE, err
+	if directDeletedHosts > 0 {
+		logrus.Infof("update cluster instances - %d", directDeletedHosts)
+		newvalue := cluster.Instances - directDeletedHosts
+		selector := bson.M{}
+		selector["_id"] = cluster.ObjectId
+
+		change := bson.M{"instances": newvalue, "time_update": dao.GetCurrentTime()}
+		erro := dao.HandleUpdateByQueryPartial(p.collectionName, selector, change)
+		if erro != nil {
+			logrus.Errorf("update cluster with objectId [%v] instances to [%d] failed, error is %v", clusterId, newvalue, erro)
+		}
+	}
+
+	if len(hosts) <= 0 {
+		logrus.Infof("no valid hosts will be deleted!")
+		return
+	}
+
+	if IsDeploymentEnabled() {
+		//call deployment module to delete nodes
+		go DeleteNodes(cluster, hosts, originStatus, x_auth_token)
 	}
 
 	return
+}
+
+func deletable(hosts []entity.Host, hostIds []string) bool {
+	if hosts == nil {
+		return false
+	}
+
+	runningHost := 0
+	for i := 0; i < len(hosts); i++ {
+		host := hosts[i]
+		if host.Status == HOST_STATUS_RUNNING && !StringInSlice(host.ObjectId.Hex(), hostIds) {
+			runningHost += 1
+		}
+	}
+
+	return runningHost >= 5
 }

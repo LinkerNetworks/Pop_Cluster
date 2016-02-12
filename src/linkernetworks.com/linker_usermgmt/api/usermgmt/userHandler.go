@@ -1,7 +1,6 @@
 package usermgmt
 
 import (
-	"regexp"
 	"encoding/json"
 	"errors"
 
@@ -11,7 +10,6 @@ import (
 	"gopkg.in/mgo.v2/bson"
 	"linkernetworks.com/linker_common_lib/persistence/entity"
 	"linkernetworks.com/linker_common_lib/rest/response"
-	// "linkernetworks.com/linker_usermgmt/common"
 	"linkernetworks.com/linker_usermgmt/services"
 )
 
@@ -56,8 +54,8 @@ func (p Resource) UserService() *restful.WebService {
 		Operation("UserDetailHandler").
 		Param(ws.HeaderParameter("X-Auth-Token", "A valid authentication token")).
 		Param(id))
-		
-	ws.Route(ws.GET("/validate" ).To(p.UserValidateHandler).
+
+	ws.Route(ws.GET("/validate").To(p.UserValidateHandler).
 		Doc("Return is the user is exit.").
 		Operation("UserValidateHandler").
 		Param(ws.HeaderParameter("X-Auth-Token", "A valid authentication token")).
@@ -89,30 +87,17 @@ func (p *Resource) UserValidateHandler(req *restful.Request, resp *restful.Respo
 		response.WriteStatusError(services.COMMON_ERROR_INVALIDATE, errors.New("username should not be null"), resp)
 		return
 	}
-	logrus.Infof("username is %v",username)
-	
-	isUse := isUsernameValid(username)
+	logrus.Infof("username is %v", username)
 	logrus.Infof("start to test username")
 
-	if !isUse {
-		logrus.Errorf("username is not legal!")
-		response.WriteStatusError(services.USER_ERROR_LEGAL, errors.New("username is not legal"), resp)
-		return
-	}
-	
 	errorCode, _, err := services.GetUserService().Validate(username, token)
 	if err != nil {
 		response.WriteStatusError(errorCode, err, resp)
 		return
 	}
-	
-	response.WriteSuccess(resp)
-	
-}
 
-func isUsernameValid (username string) bool {
-	reg := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{1,255}$`)
-	return reg.MatchString(username)
+	response.WriteSuccess(resp)
+
 }
 
 // CheckAndGenerateToken parses the http request and registry a new user.
@@ -158,8 +143,6 @@ func (p *Resource) UserCreateUserHandler(req *restful.Request, resp *restful.Res
 	p.successUpdate(userId, true, req, resp)
 
 }
-
-
 
 func userRegistryParamCheck(doc interface{}) (username string, email string, password string, company string, paraErr error) {
 	var document interface{}
@@ -218,8 +201,7 @@ func (p *Resource) UserLoginHandler(req *restful.Request, resp *restful.Response
 		response.WriteStatusError(services.COMMON_ERROR_INVALIDATE, paraErr, resp)
 		return
 	}
-	
-	
+
 	if len(username) == 0 || len(password) == 0 {
 		logrus.Errorf("username and password can not be null!")
 		response.WriteStatusError(services.COMMON_ERROR_INVALIDATE, errors.New("Username or password can not be null"), resp)
@@ -245,7 +227,7 @@ func userLoginParamCheck(doc interface{}) (username string, password string, par
 		logrus.Errorf("marshal user err is %v", paraErr)
 		return
 	}
-	
+
 	docJson := document.(map[string]interface{})
 	usernameDoc := docJson["username"]
 	if usernameDoc == nil {
@@ -255,7 +237,7 @@ func userLoginParamCheck(doc interface{}) (username string, password string, par
 	} else {
 		username = usernameDoc.(string)
 	}
-	
+
 	passwordDoc := docJson["password"]
 	if passwordDoc == nil {
 		logrus.Errorln("invalid parameter ! password can not be null")

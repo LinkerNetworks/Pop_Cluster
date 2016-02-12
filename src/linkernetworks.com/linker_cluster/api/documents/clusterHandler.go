@@ -107,8 +107,40 @@ func (p Resource) ClusterWebService() *restful.WebService {
 		Param(ws.PathParameter(ParamHostID, "Storage identifier of host")).
 		Param(id))
 
+	//pre-check if cluster name matches with regex, and if it is conflict
+	ws.Route(ws.GET("/validate").To(p.ClusterNameCheckHandler).
+		Doc("Check cluster name").
+		Operation("ClusterNameCheckHandler").
+		Param(ws.HeaderParameter("X-Auth-Token", "Authentication token")).
+		Param(ws.QueryParameter("userid", "Storage identifier of user")).
+		Param(ws.QueryParameter("clustername", "Name of cluster")))
+
 	return ws
 
+}
+
+//check username and clustername
+func (p *Resource) ClusterNameCheckHandler(req *restful.Request, resp *restful.Response) {
+	logrus.Infoln("ClusterNameCheckHandler is called!")
+	x_auth_token := req.HeaderParameter("X-Auth-Token")
+	code, err := services.TokenValidation(x_auth_token)
+	if err != nil {
+		response.WriteStatusError(code, err, resp)
+		return
+	}
+
+	userId := req.QueryParameter("userid")
+	clusterName := req.QueryParameter("clustername")
+
+	errorCode, err := services.GetClusterService().CheckClusterName(userId, clusterName, x_auth_token)
+
+	if err != nil {
+		response.WriteStatusError(errorCode, err, resp)
+		return
+	}
+	// Write success response
+	response.WriteSuccess(resp)
+	return
 }
 
 //Send cluster owner an email of endpoint

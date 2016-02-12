@@ -13,10 +13,14 @@ type Host struct {
 	ClusterName   string        `bson:"cluster_name" json:"cluster_name"`
 	Status        string        `bson:"status" json:"status"`
 	IP            string        `bson:"ip" json:"ip"`
-	PrivateIp     string        `bson:"private_ip json:"private_ip""`
+	PrivateIp     string        `bson:"private_ip" json:"private_ip"`
 	IsMasterNode  bool          `bson:"ismasternode" json:"ismasternode"`
 	IsSlaveNode   bool          `bson:"isslavenode" json:"isslavenode"`
 	IsSwarmMaster bool          `bson:"isswarmmaster" json:"isswarmmaster"`
+	IsConsul      bool          `bson:"isconsul" json:"isconsul"`
+	IsFullfilled  bool          `bson:"isfullfilled" json:"isfullfilled"`
+	IsDnsServer   bool          `bson:"isdnsserver" json:"isdnsserver"`
+	StoragePath   string        `bson:"storage_path" json:"storage_path"`
 	UserId        string        `bson:"user_id" json:"user_id"`
 	UserName      string        `bson:"username" json:"username"`
 	TenantId      string        `bson:"tenant_id" json:"tenant_id"`

@@ -17,7 +17,8 @@ func Register(container *restful.Container, cors bool) {
 func (p Resource) Register(container *restful.Container, cors bool) {
 	wss := []*restful.WebService{}
 	wss = append(wss,
-		p.ClusterWebService())
+		p.ClusterWebService(),
+		p.ProviderWebService())
 
 	//ws := d.WebService()
 	for _, ws := range wss {

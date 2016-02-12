@@ -76,6 +76,8 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 		clusterSlaveSize = request.ClusterNumber - 4
 	}
 
+	logrus.Infof("start to Call Docker Compose")
+
 	err = dockerComposeCreateCluster(request.UserName, request.ClusterName, swarmServers, clusterSlaveSize)
 
 	if err != nil {
@@ -84,16 +86,19 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	}
 
 	//get the first ip of mgmtServer as marathon Ip
-	marathonEndpoint := fmt.Sprintf("%s:8080", mgmtServers[0].PrivateIpAddress)
+	marathonEndpoint := fmt.Sprintf("%s:8080", mgmtServers[0].IpAddress)
+	logrus.Debugf("marathon endpoint is %s", marathonEndpoint)
 
 	//prepare the dns config and copy to all managements nodes
+	logrus.Infof("start to prepare the dns config ")
 	err = changeDnsConfig(mgmtServers)
 	if err != nil {
 		errorCode = DEPLOY_ERROR_CHANGE_DNSCONFIG
 		return
 	}
 
-	//copy the config file to target dns server
+	//copy the dns config file to target dns server
+	logrus.Infof("start to copy the dns config file to target dns server")
 	for _, server := range dnsServers {
 		commandStr := fmt.Sprintf("sudo mkdir -p /linker/config && sudo chown -R %s:%s /linker", sshUser, sshUser)
 		_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
@@ -111,6 +116,7 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	}
 
 	//Change "/etc/resolve.conf" if Linker Management Cluster
+	logrus.Infof("start to change name server for all nodes")
 	err = changeNameserver(swarmServers, dnsServers, storagePath, request.IsLinkerMgmt)
 	if err != nil {
 		errorCode = DEPLOY_ERROR_CHANGE_NAMESERVER
@@ -120,6 +126,7 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	//call the marathon to deploy the mesos-DNS and marathon-lb for Linker-Management Cluster
 	payload := prepareDNSandLbJson(request.UserName, request.ClusterName, dnsServers[0], request.IsLinkerMgmt)
 	deploymentId, _ := GetMarathonService().CreateGroup(payload, marathonEndpoint)
+	logrus.Infof("start to call marathon for dns and lb with deployment Id: %s", deploymentId)
 	flag, err := waitForMarathon(deploymentId, marathonEndpoint)
 	if err != nil {
 		errorCode = DEPLOY_ERROR_CREATE
@@ -173,8 +180,10 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	}
 
 	//call the marathon to deploy the mesos-UI for Linker-Management Cluster and User-Management Cluster
+	logrus.Infof("Start to deploy the linker ui ...")
 	payload = prepareMesosUI(mgmtServers, dnsServers[0], request.IsLinkerMgmt)
 	deploymentId, _ = GetMarathonService().CreateGroup(payload, marathonEndpoint)
+	logrus.Infof("Start to deploy the linker ui with deployment Id: %s", deploymentId)
 	flag, err = waitForMarathon(deploymentId, marathonEndpoint)
 	if flag {
 		if err != nil {
@@ -218,9 +227,12 @@ func prepareLinkerComponents(mgmtServers []entity.Server, swarmServer entity.Ser
 
 	mongoserverlist = commandTextBuffer.String()
 
-	for _, group := range serviceGroup.Groups {
+	for j := range serviceGroup.Groups {
+		group := &serviceGroup.Groups[j]
+		// Add constraints
 		// There is no case for group embeded group.
-		for _, app := range group.Apps {
+		for i := range group.Apps {
+			app := &group.Apps[i]
 			if app.Env != nil && app.Env["MONGODB_NODES"] != "" {
 				app.Env["MONGODB_NODES"] = mongoserverlist
 			}
@@ -245,6 +257,7 @@ func prepareLinkerComponents(mgmtServers []entity.Server, swarmServer entity.Ser
 }
 
 func prepareMesosUI(mgmtServers []entity.Server, dnsServer entity.Server, isLinkerMgmt bool) (payload []byte) {
+	logrus.Infof("Start to prepare the Mesos UI with linker Managment as %v", isLinkerMgmt)
 	payload, err := ioutil.ReadFile("/linker/marathon/marathon-dashboard.json")
 
 	constraint := []string{"hostname", "CLUSTER", dnsServer.IpAddress}
@@ -273,11 +286,15 @@ func prepareMesosUI(mgmtServers []entity.Server, dnsServer entity.Server, isLink
 	}
 	zkserverlist = commandZkBuffer.String()
 
-	for _, group := range serviceGroup.Groups {
+	for j := range serviceGroup.Groups {
+		group := &serviceGroup.Groups[j]
+		// Add constraints
 		// There is no case for group embeded group.
-		for _, app := range group.Apps {
+		for i := range group.Apps {
+			app := &group.Apps[i]
 			app.Env["Mesos_Zookeeper"] = zkserverlist
 			if !isLinkerMgmt {
+				logrus.Infof("Add constraint to mesos UI for app:%s and constaint: %v", app.Id, constraint)
 				app.Constraints = [][]string{}
 				app.Constraints = append(app.Constraints, constraint)
 			}
@@ -294,6 +311,7 @@ func prepareMesosUI(mgmtServers []entity.Server, dnsServer entity.Server, isLink
 }
 
 func prepareDNSandLbJson(username, clustername string, dnsServer entity.Server, isLinkerMgmt bool) (payload []byte) {
+	logrus.Info("Start to prepare the dns and lb marathon json with linker management as %v", isLinkerMgmt)
 	payload, err := ioutil.ReadFile("/linker/marathon/marathon-dnslb.json")
 
 	constraint := []string{"hostname", "CLUSTER", dnsServer.IpAddress}
@@ -312,12 +330,19 @@ func prepareDNSandLbJson(username, clustername string, dnsServer entity.Server, 
 		}
 		serviceGroup.Id = fmt.Sprintf("/%s-%s-dns", username, clustername)
 
-		for _, group := range serviceGroup.Groups {
+		for j := range serviceGroup.Groups {
+			group := &serviceGroup.Groups[j]
 			// Add constraints
 			// There is no case for group embeded group.
-			for _, app := range group.Apps {
+			for i := range group.Apps {
+				app := &group.Apps[i]
+				logrus.Infof("Add constraint to DNS and LB for app:%s and constaint: %v", app.Id, constraint)
 				app.Constraints = [][]string{}
 				app.Constraints = append(app.Constraints, constraint)
+				if app.Id == "mesosdns" {
+					logrus.Infof("Change instance number of DNS and LB for app:%s to 1", app.Id)
+					app.Instances = 1
+				}
 			}
 		}
 
@@ -495,7 +520,7 @@ func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, 
 
 		slavelabels := []entity.Label{}
 		slavelabels = append(slavelabels, slaveLabel)
-		slavelabels = append(labels, requestIdLabel)
+		slavelabels = append(slavelabels, requestIdLabel)
 		//create Server, install Swarm Slave and Label as Slave Node
 		for i := 0; i < request.ClusterNumber-4; i++ {
 			server, _, _ := GetDockerMachineService().Create(request.UserName, request.ClusterName, true, false, consuleServer.Hostname, request.ProviderInfo, slavelabels)
@@ -535,14 +560,17 @@ func (p *DeployService) DeleteCluster(username, clustername string, servers []en
 }
 
 func (p *DeployService) DeleteNode(username, clustername string, servers []entity.Server) (
-	errorCode string, err error) {
+	slaves []entity.Server, errorCode string, err error) {
 	logrus.Infof("start to Delete Docker Machine Nodes...")
 	//get the cluster name and user info to call docker machine to delete all the vms
 	var tempErr error
+	slaves = []entity.Server{}
 	for _, server := range servers {
 		logrus.Infof("Update env file in docker compose service.")
 		err = GetDockerComposeService().Remove(username, clustername, server.Hostname)
+		flag := true
 		if err != nil {
+			flag = false
 			tempErr = err
 			logrus.Errorf("Remove node %s failed in docker compose, when delete node: %s  err is %v\n", clustername, server.Hostname, err)
 		}
@@ -550,13 +578,18 @@ func (p *DeployService) DeleteNode(username, clustername string, servers []entit
 		logrus.Infof("Removing docker machine node, username: %s, clustername %s, hostname %s\n", username, clustername, server.Hostname)
 		err = GetDockerMachineService().DeleteMachine(username, clustername, server.Hostname)
 		if err != nil {
+			flag = false
 			tempErr = err
 			logrus.Errorf("Delete node %s failed, when delete node: %s  err is %v\n", clustername, server.Hostname, err)
+		}
+
+		if flag {
+			slaves = append(slaves, server)
 		}
 	}
 
 	if tempErr != nil {
-		return DEPLOY_ERROR_DELETE_NODE, tempErr
+		return slaves, DEPLOY_ERROR_DELETE_NODE, tempErr
 	}
 
 	return
@@ -578,14 +611,17 @@ func (p *DeployService) CreateNode(request entity.AddNodeRequest) (slaves []enti
 			tempErr = err
 			server = entity.Server{"", "", "", false, false, false, "", false, false, false}
 			logrus.Errorf("Create node %s failed in docker machine: %s  err is %v\n", request.ClusterName, server.Hostname, err)
+		} else {
+			slaves = append(slaves, server)
 		}
-		slaves = append(slaves, server)
+
 	}
 
 	//Change the "/etc/hosts" and "/etc/resolve.conf" of server
 
 	//prepare ".env" file for new Node
-	err = GetDockerComposeService().Add(request.UserName, request.ClusterName, slaves, request.CreateNumber+request.ExistedNumber)
+	err = GetDockerComposeService().Add(request.UserName, request.ClusterName, slaves, request.CreateNumber+request.ExistedNumber, request.SwarmMaster)
+
 	if err != nil {
 		logrus.Errorf("Create node %s failed in docker compose: err is %v\n", request.ClusterName, err)
 		return slaves, DEPLOY_ERROR_ADD_NODE_DOCKER_COMPOSE, err

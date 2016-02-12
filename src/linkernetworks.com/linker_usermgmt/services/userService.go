@@ -159,6 +159,11 @@ func (p *UserService) Create(userParam UserParam, token string) (errorCode strin
 	password := userParam.Password
 	company := userParam.Company
 
+	if !IsUserNameValid(username) {
+		logrus.Errorf("username invalid! username is: %v", username)
+		return COMMON_ERROR_INVALIDATE, "", errors.New("invalid username")
+	}
+
 	_, err = GetTenantService().getTenantByName(username)
 	if err == nil {
 		logrus.Errorln("user already exist!")
