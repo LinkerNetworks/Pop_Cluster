@@ -55,12 +55,11 @@ func GetDeployService() *DeployService {
 	return deployService
 }
 
-func (p *DeployService) CreateCluster(request entity.Request) (
-	servers []entity.Server, errorCode string, err error) {
+func (p *DeployService) CreateCluster(request entity.Request) (servers []entity.Server, errorCode string, err error) {
 	logrus.Infof("start to Deploy Docker Cluster...")
 	sshUser := request.ProviderInfo.Provider.SshUser
 	//Call the Docker Machines to create machines, change /etc/hosts and Replace PubKey File
-	servers, swarmServers, mgmtServers, dnsServers, _, err := dockerMachineCreateCluster(request)
+	servers, swarmServers, mgmtServers, _, sharedServers, _, err := dockerMachineCreateCluster(request)
 
 	if err != nil {
 		logrus.Errorf("Call docker-machine to create cluster failed , err is %v", err)
@@ -89,58 +88,6 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 	marathonEndpoint := fmt.Sprintf("%s:8080", mgmtServers[0].IpAddress)
 	logrus.Debugf("marathon endpoint is %s", marathonEndpoint)
 
-	//prepare the dns config and copy to all managements nodes
-	logrus.Infof("start to prepare the dns config ")
-	err = changeDnsConfig(mgmtServers)
-	if err != nil {
-		errorCode = DEPLOY_ERROR_CHANGE_DNSCONFIG
-		return
-	}
-
-	//copy the dns config file to target dns server
-	logrus.Infof("start to copy the dns config file to target dns server")
-	for _, server := range dnsServers {
-		commandStr := fmt.Sprintf("sudo mkdir -p /linker/config && sudo chown -R %s:%s /linker", sshUser, sshUser)
-		_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
-		if err != nil {
-			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
-			logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
-			return
-		}
-		_, _, err = command.ScpToMachine(server.Hostname, "/linker/config/config.json", "/linker/config/config.json", storagePath)
-		if err != nil {
-			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
-			logrus.Errorf("copy dns config file to target server %s fail, err is %v", server.Hostname, err)
-			return
-		}
-	}
-
-	//Change "/etc/resolve.conf" if Linker Management Cluster
-	logrus.Infof("start to change name server for all nodes")
-	err = changeNameserver(swarmServers, dnsServers, storagePath, request.IsLinkerMgmt)
-	if err != nil {
-		errorCode = DEPLOY_ERROR_CHANGE_NAMESERVER
-		return
-	}
-
-	//call the marathon to deploy the mesos-DNS and marathon-lb for Linker-Management Cluster
-	payload := prepareDNSandLbJson(request.UserName, request.ClusterName, dnsServers[0], request.IsLinkerMgmt)
-	deploymentId, _ := GetMarathonService().CreateGroup(payload, marathonEndpoint)
-	logrus.Infof("start to call marathon for dns and lb with deployment Id: %s", deploymentId)
-	flag, err := waitForMarathon(deploymentId, marathonEndpoint)
-	if err != nil {
-		errorCode = DEPLOY_ERROR_CREATE
-		logrus.Errorf("deploy the dns and lb failed, err is %v", err)
-		return
-	}
-	if flag {
-		logrus.Infof("marathon deployment finished successfully...")
-	} else {
-		errorCode = DEPLOY_ERROR_CREATE
-		logrus.Errorf("deploy the dns and lb failed because of timeout, err is %v", err)
-		return
-	}
-
 	//Start create Linker Components
 	if request.IsLinkerMgmt {
 		//copy the key for mongo db
@@ -161,41 +108,45 @@ func (p *DeployService) CreateCluster(request entity.Request) (
 		}
 
 		//call the marathon to deploy the linker service containers for Linker-Management Cluster
-		payload = prepareLinkerComponents(mgmtServers, swarmServers[0])
-		deploymentId, _ = GetMarathonService().CreateGroup(payload, marathonEndpoint)
-		flag, err = waitForMarathon(deploymentId, marathonEndpoint)
+		payload := prepareLinkerComponents(mgmtServers, swarmServers[0])
+		deploymentId, _ := GetMarathonService().CreateGroup(payload, marathonEndpoint)
+		flag, errDeploy := waitForMarathon(deploymentId, marathonEndpoint)
 		if flag {
-			if err != nil {
+			if errDeploy != nil {
 				errorCode = DEPLOY_ERROR_CREATE
-				logrus.Errorf("deploy the linker management components fail, err is %v", err)
+				err = errDeploy
+				logrus.Errorf("deploy the linker management components fail, err is %v", errDeploy)
 				return
 			} else {
 				logrus.Infof("deploy the linker management components finished successfully...")
 			}
 		} else {
 			errorCode = DEPLOY_ERROR_CREATE
-			logrus.Errorf("deploy the linker management components fail because of timeout, err is %v", err)
+			err = errDeploy
+			logrus.Errorf("deploy the linker management components fail because of timeout, err is %v", errDeploy)
 			return
 		}
 	}
 
 	//call the marathon to deploy the mesos-UI for Linker-Management Cluster and User-Management Cluster
 	logrus.Infof("Start to deploy the linker ui ...")
-	payload = prepareMesosUI(mgmtServers, dnsServers[0], request.IsLinkerMgmt)
-	deploymentId, _ = GetMarathonService().CreateGroup(payload, marathonEndpoint)
+	payload := prepareMesosUI(mgmtServers, sharedServers[0], request.IsLinkerMgmt)
+	deploymentId, _ := GetMarathonService().CreateGroup(payload, marathonEndpoint)
 	logrus.Infof("Start to deploy the linker ui with deployment Id: %s", deploymentId)
-	flag, err = waitForMarathon(deploymentId, marathonEndpoint)
+	flag, errDeploy := waitForMarathon(deploymentId, marathonEndpoint)
 	if flag {
-		if err != nil {
+		if errDeploy != nil {
 			errorCode = DEPLOY_ERROR_CREATE
-			logrus.Errorf("deploy the linker ui and user mgmt components fail, err is %v", err)
+			err = errDeploy
+			logrus.Errorf("deploy the linker ui and user mgmt components fail, err is %v", errDeploy)
 			return
 		} else {
 			logrus.Infof("deploy the linker ui and user mgmt components finished successfully...")
 		}
 	} else {
 		errorCode = DEPLOY_ERROR_CREATE
-		logrus.Errorf("deploy the linker ui and user mgmt components fail because of timeout, err is %v", err)
+		err = errDeploy
+		logrus.Errorf("deploy the linker ui and user mgmt components fail because of timeout, err is %v", errDeploy)
 		return
 	}
 	return
@@ -432,29 +383,26 @@ func changeDnsConfig(mgmtServers []entity.Server) (err error) {
 }
 
 func changeNameserver(servers, dnsServers []entity.Server, storagePath string, isLinkerMgmt bool) (err error) {
-	if isLinkerMgmt {
-		for _, server := range servers {
-			commandStr := fmt.Sprintf("sudo sed -i '1inameserver %s' /etc/resolv.conf", server.IpAddress)
-			_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
-			if err != nil {
-				logrus.Errorf("change name server failed for server [%v], error is %v", server.IpAddress, err)
-				return
-			}
+	for _, server := range servers {
+		var commandTextBuffer bytes.Buffer
+		commandTextBuffer.WriteString("sudo sed -i '1i")
+		for _, dnsserver := range dnsServers {
+			commandTextBuffer.WriteString("nameserver " + dnsserver.IpAddress + "\n")
 		}
-	} else {
-		commandStr := fmt.Sprintf("sudo sed -i '1inameserver %s' /etc/resolv.conf", dnsServers[0].IpAddress)
-		for _, server := range servers {
-			_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
-			if err != nil {
-				logrus.Errorf("change name server failed for server [%v], error is %v", server.IpAddress, err)
-				return
-			}
+		commandTextBuffer.WriteString("' /etc/resolv.conf")
+		_, _, err = command.ExecCommandOnMachine(server.Hostname, commandTextBuffer.String(), storagePath)
+		if err != nil {
+			logrus.Errorf("change name server failed for server [%v], error is %v", server.IpAddress, err)
+			return
 		}
 	}
 	return
 }
 
-func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, mgmtServers, dnsServers []entity.Server, errorCode string, err error) {
+func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, mgmtServers, dnsServers, sharedServers []entity.Server, errorCode string, err error) {
+	sshUser := request.ProviderInfo.Provider.SshUser
+	storagePath := DOCKERMACHINE_STORAGEPATH_PREFIX + request.UserName + "/" + request.ClusterName
+	var slaveServers []entity.Server
 	isLinkerMgmt := request.IsLinkerMgmt
 	requestIdLabel := entity.Label{Key: "requestId", Value: request.RequestId}
 	masterLabel := entity.Label{Key: "master", Value: "true"}
@@ -505,17 +453,21 @@ func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, 
 		swarmMasterServer, _, _ := GetDockerMachineService().Create(request.UserName, request.ClusterName, true, true, consuleServer.Hostname, request.ProviderInfo, labels)
 		swarmMasterServer.IsMaster = true
 		swarmMasterServer.IsSwarmMaster = true
+		swarmMasterServer.IsDnsServer = true
 		swarmServers = append(swarmServers, swarmMasterServer)
 		mgmtServers = append(mgmtServers, swarmMasterServer)
 		servers = append(servers, swarmMasterServer)
+		dnsServers = append(dnsServers, swarmMasterServer)
 
 		//create Server, install Swarm Slave and Label as Mgmt Node
 		for i := 0; i < 2; i++ {
 			server, _, _ := GetDockerMachineService().Create(request.UserName, request.ClusterName, true, false, consuleServer.Hostname, request.ProviderInfo, labels)
 			server.IsMaster = true
+			server.IsDnsServer = true //TODO : install lb and dns on the master by swarm
 			swarmServers = append(swarmServers, server)
 			mgmtServers = append(mgmtServers, server)
 			servers = append(servers, server)
+			dnsServers = append(dnsServers, server)
 		}
 
 		slavelabels := []entity.Label{}
@@ -525,16 +477,61 @@ func dockerMachineCreateCluster(request entity.Request) (servers, swarmServers, 
 		for i := 0; i < request.ClusterNumber-4; i++ {
 			server, _, _ := GetDockerMachineService().Create(request.UserName, request.ClusterName, true, false, consuleServer.Hostname, request.ProviderInfo, slavelabels)
 			server.IsSlave = true
-			if i == 0 {
-				server.IsDnsServer = true
-				dnsServers = append(dnsServers, server)
-			}
 			swarmServers = append(swarmServers, server)
 			servers = append(servers, server)
+			slaveServers = append(slaveServers, server)
 			//choose the first slave server as shared server
-
 		}
 	}
+
+	//prepare the dns config and copy to all managements nodes
+	logrus.Infof("start to prepare the dns config ")
+	err = changeDnsConfig(mgmtServers)
+	if err != nil {
+		errorCode = DEPLOY_ERROR_CHANGE_DNSCONFIG
+		return
+	}
+
+	//copy the dns config file to target dns server
+	logrus.Infof("start to copy the dns config file to target dns server")
+	for _, server := range dnsServers {
+		commandStr := fmt.Sprintf("sudo mkdir -p /linker/config && sudo chown -R %s:%s /linker", sshUser, sshUser)
+		_, _, err = command.ExecCommandOnMachine(server.Hostname, commandStr, storagePath)
+		if err != nil {
+			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
+			logrus.Errorf("mkdir /linker/config failed when copy dns config file", err)
+			return
+		}
+		_, _, err = command.ScpToMachine(server.Hostname, "/linker/config/config.json", "/linker/config/config.json", storagePath)
+		if err != nil {
+			errorCode = DEPLOY_ERROR_COPY_CONFIG_FILE
+			logrus.Errorf("copy dns config file to target server %s fail, err is %v", server.Hostname, err)
+			return
+		}
+	}
+
+	//Change "/etc/resolve.conf" if Linker Management Cluster
+	logrus.Infof("start to change name server for all nodes")
+	err = changeNameserver(swarmServers, dnsServers, storagePath, request.IsLinkerMgmt)
+	if err != nil {
+		errorCode = DEPLOY_ERROR_CHANGE_NAMESERVER
+		return
+	}
+
+	//weave should be boot after dns configured
+	var weaveServer entity.Server
+	for i, server := range slaveServers {
+		if i == 0 {
+			weaveServer = server
+			sharedServers = append(sharedServers, weaveServer)
+		}
+		_, _, err = command.BootUpWeave(server.Hostname, server.StoragePath, weaveServer.PrivateIpAddress)
+		if err != nil {
+			err = errors.New("Bootup Weave error!")
+			return
+		}
+	}
+
 	return
 }
 

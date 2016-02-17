@@ -6,6 +6,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	// "gopkg.in/mgo.v2/bson"
 
+	common "linkernetworks.com/linker_cluster/common"
 	dcosentity "linkernetworks.com/linker_common_lib/entity"
 	"linkernetworks.com/linker_common_lib/persistence/dao"
 	"linkernetworks.com/linker_common_lib/persistence/entity"
@@ -23,9 +24,9 @@ var (
 		SshUser:      "ec2-user",
 	}
 	awsEC2Info dcosentity.AwsEC2 = dcosentity.AwsEC2{
-		AccessKey:    "AKIAJZHML45JIDQYSBFA",
-		SecretKey:    "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",
-		ImageId:      "ami-faf13d99",
+		AccessKey:    "AKIAIZZA4UDV2PMNL2HQ",
+		SecretKey:    "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",
+		ImageId:      "ami-b78e47d4",
 		InstanceType: "t2.large",
 		RootSize:     "100",
 		Region:       "ap-southeast-1",
@@ -93,6 +94,9 @@ func CreateCluster(cluster entity.Cluster, x_auth_token string) (err error) {
 func getProvider(userId string, token string) (providerinfo dcosentity.ProviderInfo) {
 	logrus.Infof("get ec2 provider by userId [%s]", userId)
 
+	providerInfo.AwsEC2Info.AccessKey = string(common.Base64Encode([]byte(providerInfo.AwsEC2Info.AccessKey)))
+	providerInfo.AwsEC2Info.SecretKey = string(common.Base64Encode([]byte(providerInfo.AwsEC2Info.SecretKey)))
+
 	_, providers, _, err := GetProviderService().QueryProvider(EC2_TYPE, userId, 0, 0, "", token)
 	if err != nil {
 		logrus.Errorf("get ec2 provider error [%v]", err)
@@ -112,9 +116,12 @@ func getProvider(userId string, token string) (providerinfo dcosentity.ProviderI
 
 		logrus.Debugf("ec2 providerInfo is %v", providerinfo)
 
+		providerinfo.AwsEC2Info.AccessKey = string(common.Base64Encode([]byte(providerinfo.AwsEC2Info.AccessKey)))
+		providerinfo.AwsEC2Info.SecretKey = string(common.Base64Encode([]byte(providerinfo.AwsEC2Info.SecretKey)))
 		return providerinfo
 	} else {
 		logrus.Infof("no ec2 provider info in db, will use default value")
+
 		return providerInfo
 	}
 }

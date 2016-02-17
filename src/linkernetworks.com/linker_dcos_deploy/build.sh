@@ -4,21 +4,22 @@ export GOPATH=${CLUSTER_HOME}/../../../
 OUTPUT_DIR=${GOPATH}/bin
 ARTIFACT=${OUTPUT_DIR}/dcos_deploy
 
-# echo "Start to go third party code from github.com ..."
-# echo "Downloading logrus ..."
-# go get -v -u github.com/Sirupsen/logrus
-# echo "Downloading properties"
-# go get -v -u github.com/magiconair/properties
-# echo "Downloading go-restful ..."
-# go get -v -u github.com/emicklei/go-restful
-# echo "Downloading mejson ..."
-# go get -v -u github.com/compose/mejson
-# echo "Downloading go-dockerclient ..."
-# go get -v -u github.com/fsouza/go-dockerclient
-# echo "Downloading jsonq ..."
-# go get -v -u github.com/jmoiron/jsonq
-# echo "Downloading uuid ..."
-# go get -v -u code.google.com/p/go-uuid/uuid
+echo "Start to go third party code from github.com ..."
+echo "Downloading logrus ..."
+go get -v -u github.com/Sirupsen/logrus
+echo "Downloading properties"
+go get -v -u github.com/magiconair/properties
+echo "Downloading go-restful ..."
+go get -v -u github.com/emicklei/go-restful
+echo "Downloading mejson ..."
+go get -v -u github.com/compose/mejson
+echo "Downloading go-dockerclient ..."
+go get -v -u github.com/fsouza/go-dockerclient
+echo "Downloading jsonq ..."
+go get -v -u github.com/jmoiron/jsonq
+echo "Downloading uuid ..."
+go get -v -u github.com/pborman/uuid
+#go get -v -u code.google.com/p/go-uuid/uuid
 
 
 echo "Start to build linker cluster ..."

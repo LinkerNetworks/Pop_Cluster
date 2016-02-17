@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"github.com/Sirupsen/logrus"
+	common "linkernetworks.com/linker_dcos_deploy/common"
 
 	"linkernetworks.com/linker_common_lib/entity"
 )
@@ -43,8 +44,22 @@ func CreateMachine(providerType, hostname, storagePath string, swarm, swarmMaste
 		logrus.Infof("Aws... \n")
 		awsec2 := provider.AwsEC2Info
 		commandTextBuffer.WriteString("--driver " + PROVIDER_TYPE_AWSEC2 + " ")
-		commandTextBuffer.WriteString("--amazonec2-access-key " + awsec2.AccessKey + " ")
-		commandTextBuffer.WriteString("--amazonec2-secret-key " + awsec2.SecretKey + " ")
+		accessKeyBytes, errAccessKey := common.Base64Decode([]byte(awsec2.AccessKey))
+		if errAccessKey != nil {
+			logrus.Errorf("fail to decode accesskey: %v", errAccessKey)
+			err = errAccessKey
+			return
+		}
+		accessKey := string(accessKeyBytes)
+		commandTextBuffer.WriteString("--amazonec2-access-key " + accessKey + " ")
+		secretKeyBytes, errSecretKey := common.Base64Decode([]byte(awsec2.SecretKey))
+		if errSecretKey != nil {
+			logrus.Errorf("fail to decode secretKey: %v", errSecretKey)
+			err = errSecretKey
+			return
+		}
+		secretKey := string(secretKeyBytes)
+		commandTextBuffer.WriteString("--amazonec2-secret-key " + secretKey + " ")
 		commandTextBuffer.WriteString("--amazonec2-region " + awsec2.Region + " ")
 		commandTextBuffer.WriteString("--amazonec2-vpc-id " + awsec2.VpcId + " ")
 		commandTextBuffer.WriteString("--amazonec2-ssh-user " + provider.Provider.SshUser + " ")
@@ -94,7 +109,7 @@ func DeleteMachine(hostname, storagePath string) (output string, errput string, 
 	commandTextBuffer.WriteString("--storage-path " + storagePath + " ")
 	commandTextBuffer.WriteString("rm -y ")
 	commandTextBuffer.WriteString(hostname)
-	
+
 	logrus.Infof("Executing delete machine command: %s", commandTextBuffer.String())
 	output, errput, err = ExecCommand(commandTextBuffer.String())
 	return output, errput, err
@@ -180,5 +195,12 @@ func BootUpConsul(hostname, storagePath string) (output, errput string, err erro
 
 	logrus.Infof("Executing BootUpConsul command: %s", commandTextBuffer.String())
 	output, errput, err = ExecCommand(commandTextBuffer.String())
+	return
+}
+
+func BootUpWeave(hostname, storagePath, weaveMaster string) (output, errput string, err error) {
+	ExecCommandOnMachine(hostname, "sudo curl -L git.io/weave -o /usr/local/bin/weave", storagePath)
+	ExecCommandOnMachine(hostname, "sudo chmod +x /usr/local/bin/weave", storagePath)
+	ExecCommandOnMachine(hostname, "sudo /usr/local/bin/weave launch --ipalloc-range 192.168.0.0/8 "+weaveMaster, storagePath)
 	return
 }

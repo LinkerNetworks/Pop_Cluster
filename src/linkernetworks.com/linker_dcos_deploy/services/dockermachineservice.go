@@ -1,9 +1,9 @@
 package services
 
 import (
-	"code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
 	"linkernetworks.com/linker_common_lib/entity"
 	"os"
 	"sync"
